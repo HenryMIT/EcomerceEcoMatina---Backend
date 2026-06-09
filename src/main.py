@@ -1,12 +1,40 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(
-    title="API EcoMatina",
-    description="API para gestión de electrodomésticos y equipos de cocina",
-    version="1.0.0"
+from auth.router import router as auth_router
+from core.config import get_settings
+from core.exceptions import register_exception_handlers
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+
+    app = FastAPI(
+        title="API AgroMatina",
+        description="Sistema de ventas en linea — AgroMatina Ferreteria",
+        version="1.0.0",
+        docs_url="/docs",
+        redoc_url="/redoc",
     )
 
-@app.get("/")
-def root():
-    return {"mensaje": "API EcoMatina funcionando correctamente"}
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # ajustar en produccion con dominios especificos
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
+    app.include_router(auth_router, prefix="/api/v1/auth", tags=["Autenticacion"])
+
+    register_exception_handlers(app)
+
+    return app
+
+
+app = create_app()
+
+
+@app.get("/", tags=["Health"])
+def root():
+    return {"mensaje": "API AgroMatina funcionando correctamente", "version": "1.0.0"}
