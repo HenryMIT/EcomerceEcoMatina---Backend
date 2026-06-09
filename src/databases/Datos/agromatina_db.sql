@@ -39,7 +39,6 @@ CREATE TABLE productos (
     mas_vendido TINYINT(1) NOT NULL DEFAULT 0,
     stock DECIMAL(12 , 3 ) NOT NULL DEFAULT 0,
     categoria_id INT DEFAULT NULL,
-    image_url VARCHAR(500) DEFAULT NULL,
     activo TINYINT(1) NOT NULL DEFAULT 1,
     last_synced_at DATETIME DEFAULT NULL,
     KEY ix_productos_categoria (categoria_id),
@@ -187,3 +186,13 @@ CREATE TABLE cotizacion_archivos (
     KEY ix_archivos_cotizacion (cotizacion_id),
     CONSTRAINT fk_archivos_cotizacion FOREIGN KEY (cotizacion_id) REFERENCES solicitudes_cotizacion (id) ON DELETE CASCADE
 )  ENGINE=INNODB; 
+
+CREATE TABLE producto_imagenes (
+  id          INT PRIMARY KEY AUTO_INCREMENT,
+  producto_id INT          NOT NULL,
+  url         VARCHAR(500) NOT NULL,        -- link de Cloudinary
+  es_principal TINYINT(1)  NOT NULL DEFAULT 0,
+  posicion    INT          NOT NULL DEFAULT 0,
+  CONSTRAINT fk_imagen_producto
+    FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE CASCADE
+);
