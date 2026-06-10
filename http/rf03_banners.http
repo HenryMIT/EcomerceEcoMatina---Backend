@@ -1,0 +1,71 @@
+# ============================================================================
+# RF-03 — Banner / carrusel de promociones de la pagina de inicio
+# Endpoint:  GET /api/v1/banners
+# Pruebas manuales con REST Client (VS Code) / HTTP Client (IntelliJ)
+#
+# Servidor:
+#   cd EcomerceEcoMatina---Backend/src
+#   python -m uvicorn main:app --reload
+#
+# Requiere la tabla 'banners' creada en MySQL (ver DDL del RF-03).
+# El endpoint NO recibe entradas; los invalidos son negativos de protocolo.
+# ============================================================================
+
+@baseUrl = http://localhost:8000
+@apiV1   = {{baseUrl}}/api/v1
+
+
+# ----------------------------------------------------------------------------
+# CASOS VALIDOS
+# ----------------------------------------------------------------------------
+
+### [VALIDO] 1. Listar banners activos
+# Esperado: 200 OK
+# Cuerpo: arreglo (0..5) de { imagen_url, texto_descriptivo(|null), url_destino(|null) }
+#   - Solo banners activos (activo=1), en orden ascendente por 'orden'.
+#   - Si no hay activos -> [] (el front usa la imagen institucional por defecto).
+# @name banners_ok
+GET {{apiV1}}/banners
+Accept: application/json
+
+
+### [VALIDO] 2. Sin cabecera Accept (FastAPI responde JSON por defecto)
+# Esperado: 200 OK, Content-Type: application/json
+GET {{apiV1}}/banners
+
+
+### [VALIDO] 3. Query params espurios — deben ignorarse, no romper
+# Esperado: 200 OK
+GET {{apiV1}}/banners?activo=0&limit=99
+
+
+# ----------------------------------------------------------------------------
+# CASOS INVALIDOS (negativos de protocolo)
+# ----------------------------------------------------------------------------
+
+### [INVALIDO] 4. Metodo incorrecto: POST
+# Esperado: 405 Method Not Allowed
+POST {{apiV1}}/banners
+Content-Type: application/json
+
+{}
+
+
+### [INVALIDO] 5. Metodo incorrecto: DELETE
+# Esperado: 405 Method Not Allowed
+DELETE {{apiV1}}/banners
+
+
+### [INVALIDO] 6. Ruta con error tipografico (singular)
+# Esperado: 404 Not Found
+GET {{apiV1}}/banner
+
+
+### [INVALIDO] 7. Barra final sobrante
+# Esperado: 404 Not Found
+GET {{apiV1}}/banners/
+
+
+### [INVALIDO] 8. Falta el prefijo de version /api/v1
+# Esperado: 404 Not Found
+GET {{baseUrl}}/banners

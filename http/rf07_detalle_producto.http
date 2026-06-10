@@ -1,0 +1,81 @@
+# ============================================================================
+# RF-07 — Vista de detalle del producto
+# Endpoint:  GET /api/v1/products/{codigo}
+# Pruebas manuales con REST Client (VS Code) / HTTP Client (IntelliJ)
+#
+# Servidor:
+#   cd EcomerceEcoMatina---Backend/src
+#   python -m uvicorn main:app --reload
+# ============================================================================
+
+@baseUrl = http://localhost:8000
+@apiV1   = {{baseUrl}}/api/v1
+
+
+# ----------------------------------------------------------------------------
+# CASOS VALIDOS
+# ----------------------------------------------------------------------------
+
+### [VALIDO] 1. Producto en oferta con galeria (PROD-001)
+# Esperado: 200 OK
+# Cuerpo: { codigo, nombre, descripcion, precio_actual, en_oferta(true),
+#           precio_original, porcentaje_descuento, categoria{codigo,nombre},
+#           imagenes[ {url, es_principal} ] }
+#   - en_oferta=true -> precio_original y porcentaje_descuento presentes
+#   - imagenes ordenadas por posicion; la principal con es_principal=true
+# @name detalle_ok
+GET {{apiV1}}/products/PROD-001
+Accept: application/json
+
+
+### [VALIDO] 2. Producto sin oferta (PROD-003)
+# Esperado: 200 OK
+#   - en_oferta=false -> precio_original=null, porcentaje_descuento=null
+#   - precio_actual = precio normal
+GET {{apiV1}}/products/PROD-003
+
+
+### [VALIDO] 3. Producto mas vendido sin oferta (PROD-008)
+# Esperado: 200 OK
+GET {{apiV1}}/products/PROD-008
+
+
+# ----------------------------------------------------------------------------
+# ROUTING — los literales NO deben caer en {codigo}
+# ----------------------------------------------------------------------------
+
+### [ROUTING] 4. /products/ofertas sigue siendo la lista de ofertas (no un "codigo")
+# Esperado: 200 OK con un ARREGLO (no un objeto detalle ni 404)
+GET {{apiV1}}/products/ofertas
+
+
+### [ROUTING] 5. /products/mas-vendidos sigue siendo la lista de mas vendidos
+# Esperado: 200 OK con un ARREGLO
+GET {{apiV1}}/products/mas-vendidos
+
+
+# ----------------------------------------------------------------------------
+# CASOS INVALIDOS / NO ENCONTRADO
+# ----------------------------------------------------------------------------
+
+### [INVALIDO] 6. Producto inexistente
+# Esperado: 404 Not Found -> {"detail": "No existe el producto 'NOPE'"}
+GET {{apiV1}}/products/NOPE
+
+
+### [INVALIDO] 7. Producto inactivo (PROD-010 esta activo=0 en los datos de prueba)
+# Esperado: 404 Not Found
+GET {{apiV1}}/products/PROD-010
+
+
+### [INVALIDO] 8. Metodo incorrecto: POST
+# Esperado: 405 Method Not Allowed
+POST {{apiV1}}/products/PROD-001
+Content-Type: application/json
+
+{}
+
+
+### [INVALIDO] 9. Falta el prefijo de version /api/v1
+# Esperado: 404 Not Found
+GET {{baseUrl}}/products/PROD-001

@@ -196,3 +196,17 @@ CREATE TABLE producto_imagenes (
   CONSTRAINT fk_imagen_producto
     FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE CASCADE
 );
+
+-- ============================================================
+-- Banners del carrusel de la pagina de inicio (RF-03).
+-- Administrados desde el escritorio y sincronizados; imagen en Cloudinary.
+-- ============================================================
+CREATE TABLE banners (
+  id                INT PRIMARY KEY AUTO_INCREMENT,
+  imagen_url        VARCHAR(500) NOT NULL,        -- link de Cloudinary
+  texto_descriptivo VARCHAR(255) DEFAULT NULL,
+  url_destino       VARCHAR(500) DEFAULT NULL,    -- CTA: producto / categoria / seccion
+  activo            TINYINT(1)   NOT NULL DEFAULT 1,
+  orden             INT          NOT NULL DEFAULT 0,
+  last_synced_at    DATETIME     DEFAULT NULL
+) ENGINE=InnoDB;

@@ -1,0 +1,93 @@
+# ============================================================================
+# RF-01 — Visualizacion de productos en oferta (pagina de inicio)
+# Endpoint:  GET /api/v1/products/ofertas
+# Pruebas manuales con REST Client (VS Code) / HTTP Client (IntelliJ)
+#
+# Como ejecutar el servidor antes de probar:
+#   cd EcomerceEcoMatina---Backend/src
+#   uvicorn main:app --reload
+#
+# El endpoint NO recibe entradas del cliente (sin path/query params ni body),
+# por lo que los casos "invalidos" son negativos de protocolo HTTP, no de
+# validacion de datos.
+# ============================================================================
+
+@baseUrl = http://localhost:8000
+@apiV1   = {{baseUrl}}/api/v1
+
+
+# ----------------------------------------------------------------------------
+# CASOS VALIDOS (ruta feliz)
+# ----------------------------------------------------------------------------
+
+### [VALIDO] 1. Peticion correcta — listar productos en oferta
+# Esperado: 200 OK
+# Cuerpo: arreglo JSON con 0..8 objetos ProductoOfertaRead.
+#   - Si NO hay ofertas vigentes -> []  (el front oculta la seccion / muestra mensaje)
+#   - Cada item: { codigo, nombre, precio_original, precio_oferta,
+#                  porcentaje_descuento (0..100), imagen_url (string | null) }
+# Verificar ademas: como maximo 8 elementos; precio_oferta < precio_original.
+# @name ofertas_ok
+GET {{apiV1}}/products/ofertas
+Accept: application/json
+
+
+### [VALIDO] 2. Sin cabecera Accept (FastAPI responde JSON por defecto)
+# Esperado: 200 OK, Content-Type: application/json
+GET {{apiV1}}/products/ofertas
+
+
+### [VALIDO] 3. Query params espurios — deben ignorarse, no romper
+# Esperado: 200 OK (el endpoint no declara query params; se descartan)
+GET {{apiV1}}/products/ofertas?foo=bar&limite=999
+
+
+# ----------------------------------------------------------------------------
+# CASOS INVALIDOS (negativos de protocolo)
+# ----------------------------------------------------------------------------
+
+### [INVALIDO] 4. Metodo incorrecto: POST sobre una ruta GET
+# Esperado: 405 Method Not Allowed
+POST {{apiV1}}/products/ofertas
+Content-Type: application/json
+
+{}
+
+
+### [INVALIDO] 5. Metodo incorrecto: DELETE
+# Esperado: 405 Method Not Allowed
+DELETE {{apiV1}}/products/ofertas
+
+
+### [INVALIDO] 6. Metodo incorrecto: PUT
+# Esperado: 405 Method Not Allowed
+PUT {{apiV1}}/products/ofertas
+
+
+### [INVALIDO] 7. Ruta con error tipografico (singular)
+# Esperado: 404 Not Found
+GET {{apiV1}}/products/oferta
+
+
+### [INVALIDO] 8. Barra final sobrante
+# Esperado: 404 Not Found (FastAPI no redirige a agregar/quitar la barra)
+GET {{apiV1}}/products/ofertas/
+
+
+### [INVALIDO] 9. Falta el prefijo de version /api/v1
+# Esperado: 404 Not Found
+GET {{baseUrl}}/products/ofertas
+
+
+### [INVALIDO] 10. Recurso inexistente bajo el mismo arbol
+# Esperado: 404 Not Found
+GET {{apiV1}}/products
+
+
+# ----------------------------------------------------------------------------
+# SANITY CHECK (no es RF-01, sirve para confirmar que la app esta arriba)
+# ----------------------------------------------------------------------------
+
+### [SALUD] 11. Health root
+# Esperado: 200 OK -> {"mensaje": "...", "version": "1.0.0"}
+GET {{baseUrl}}/

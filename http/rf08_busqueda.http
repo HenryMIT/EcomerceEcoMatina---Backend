@@ -1,0 +1,88 @@
+# ============================================================================
+# RF-08/09/10 — Busqueda de productos (coincidencia parcial + filtro + paginacion)
+# Endpoint:  GET /api/v1/products/search?q={texto}&categoria={codigo}&page={n}
+# Pruebas manuales con REST Client (VS Code) / HTTP Client (IntelliJ)
+#
+# Servidor:
+#   cd EcomerceEcoMatina---Backend/src
+#   python -m uvicorn main:app --reload
+# ============================================================================
+
+@baseUrl = http://localhost:8000
+@apiV1   = {{baseUrl}}/api/v1
+
+
+# ----------------------------------------------------------------------------
+# CASOS VALIDOS
+# ----------------------------------------------------------------------------
+
+### [VALIDO] 1. Busqueda por texto parcial
+# Esperado: 200 OK
+# Cuerpo: { consulta, categoria(null), total, pagina, tamano_pagina(20),
+#           total_paginas, productos[ ProductoCardRead ] }
+# @name busqueda_ok
+GET {{apiV1}}/products/search?q=taladro
+Accept: application/json
+
+
+### [VALIDO] 2. Insensible a mayusculas/minusculas (RF-09)
+# Esperado: 200 OK, mismos resultados que "taladro"
+GET {{apiV1}}/products/search?q=TALADRO
+
+
+### [VALIDO] 3. Coincidencia parcial corta (varios resultados)
+# Esperado: 200 OK con varios productos
+GET {{apiV1}}/products/search?q=a
+
+
+### [VALIDO] 4. Filtro por categoria (RF-10)
+# Esperado: 200 OK, solo productos de CAT-JAR que coincidan
+GET {{apiV1}}/products/search?q=pala&categoria=CAT-JAR
+
+
+### [VALIDO] 5. Sin resultados
+# Esperado: 200 OK, total=0, productos=[]
+GET {{apiV1}}/products/search?q=xyzzyqwerty
+
+
+### [VALIDO] 6. Paginacion (RF-11)
+# Esperado: 200 OK, pagina=1, hasta 20 productos
+GET {{apiV1}}/products/search?q=a&page=1
+
+
+# ----------------------------------------------------------------------------
+# CASOS DE VALIDACION (422)
+# ----------------------------------------------------------------------------
+
+### [VALIDACION] 7. Falta el parametro obligatorio q
+# Esperado: 422 Unprocessable Entity
+GET {{apiV1}}/products/search
+
+
+### [VALIDACION] 8. q vacio (min_length = 1)
+# Esperado: 422 Unprocessable Entity
+GET {{apiV1}}/products/search?q=
+
+
+### [VALIDACION] 9. page = 0
+# Esperado: 422 Unprocessable Entity
+GET {{apiV1}}/products/search?q=taladro&page=0
+
+
+# ----------------------------------------------------------------------------
+# CASOS INVALIDOS / NO ENCONTRADO
+# ----------------------------------------------------------------------------
+
+### [INVALIDO] 10. Filtro con categoria inexistente
+# Esperado: 404 Not Found -> {"detail": "No existe la categoria 'NOPE'"}
+GET {{apiV1}}/products/search?q=taladro&categoria=NOPE
+
+
+### [INVALIDO] 11. Metodo incorrecto: POST
+# Esperado: 405 Method Not Allowed
+POST {{apiV1}}/products/search?q=taladro
+
+
+### [ROUTING] 12. "search" NO debe interpretarse como codigo de producto
+# Esperado: 200 OK con objeto de busqueda (no 404 de detalle)
+GET {{apiV1}}/products/search?q=a

@@ -1,0 +1,87 @@
+# ============================================================================
+# RF-05 — Grilla de productos por categoria (paginada, RF-11)
+# Endpoint:  GET /api/v1/categories/{codigo}/products?page=N
+# Pruebas manuales con REST Client (VS Code) / HTTP Client (IntelliJ)
+#
+# Servidor:
+#   cd EcomerceEcoMatina---Backend/src
+#   python -m uvicorn main:app --reload
+#
+# Aqui SI hay entradas: 'codigo' (path) y 'page' (query, >= 1). Por eso aparecen
+# casos de validacion (422) ademas de los negativos de protocolo.
+# ============================================================================
+
+@baseUrl = http://localhost:8000
+@apiV1   = {{baseUrl}}/api/v1
+
+
+# ----------------------------------------------------------------------------
+# CASOS VALIDOS
+# ----------------------------------------------------------------------------
+
+### [VALIDO] 1. Categoria existente, primera pagina
+# Esperado: 200 OK
+# Cuerpo: { categoria{codigo,nombre}, total, pagina, tamano_pagina(20),
+#           total_paginas, productos[ ProductoCardRead ] }
+#   - Cada card: { codigo, nombre, precio_actual, en_oferta,
+#                  precio_original(|null), porcentaje_descuento(|null), imagen_url(|null) }
+#   - Solo productos activos de esa categoria; orden por nombre ascendente.
+# @name grilla_ok
+GET {{apiV1}}/categories/CAT-HER/products
+Accept: application/json
+
+
+### [VALIDO] 2. Pagina explicita
+# Esperado: 200 OK con pagina=1
+GET {{apiV1}}/categories/CAT-HER/products?page=1
+
+
+### [VALIDO] 3. Pagina fuera de rango (no hay tantos productos)
+# Esperado: 200 OK, productos: [] pero categoria/total intactos
+GET {{apiV1}}/categories/CAT-HER/products?page=99
+
+
+### [VALIDO] 4. Otra categoria con productos
+# Esperado: 200 OK
+GET {{apiV1}}/categories/CAT-FON/products
+
+
+# ----------------------------------------------------------------------------
+# CASOS DE VALIDACION (422 — la entrada no cumple las reglas)
+# ----------------------------------------------------------------------------
+
+### [VALIDACION] 5. page = 0 (debe ser >= 1)
+# Esperado: 422 Unprocessable Entity
+GET {{apiV1}}/categories/CAT-HER/products?page=0
+
+
+### [VALIDACION] 6. page negativa
+# Esperado: 422 Unprocessable Entity
+GET {{apiV1}}/categories/CAT-HER/products?page=-3
+
+
+### [VALIDACION] 7. page no numerica
+# Esperado: 422 Unprocessable Entity
+GET {{apiV1}}/categories/CAT-HER/products?page=abc
+
+
+# ----------------------------------------------------------------------------
+# CASOS INVALIDOS / NO ENCONTRADO
+# ----------------------------------------------------------------------------
+
+### [INVALIDO] 8. Categoria inexistente
+# Esperado: 404 Not Found -> {"detail": "No existe la categoria 'NOPE'"}
+GET {{apiV1}}/categories/NOPE/products
+
+
+### [INVALIDO] 9. Metodo incorrecto: POST
+# Esperado: 405 Method Not Allowed
+POST {{apiV1}}/categories/CAT-HER/products
+Content-Type: application/json
+
+{}
+
+
+### [INVALIDO] 10. Ruta incompleta (sin /products)
+# Esperado: 404 Not Found
+GET {{apiV1}}/categories/CAT-HER

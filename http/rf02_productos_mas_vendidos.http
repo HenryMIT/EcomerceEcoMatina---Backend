@@ -1,0 +1,83 @@
+# ============================================================================
+# RF-02 — Visualizacion de productos mas vendidos (pagina de inicio)
+# Endpoint:  GET /api/v1/products/mas-vendidos
+# Pruebas manuales con REST Client (VS Code) / HTTP Client (IntelliJ)
+#
+# Servidor:
+#   cd EcomerceEcoMatina---Backend/src
+#   python -m uvicorn main:app --reload
+#
+# El endpoint NO recibe entradas del cliente; los casos "invalidos" son
+# negativos de protocolo HTTP, no de validacion de datos.
+# ============================================================================
+
+@baseUrl = http://localhost:8000
+@apiV1   = {{baseUrl}}/api/v1
+
+
+# ----------------------------------------------------------------------------
+# CASOS VALIDOS
+# ----------------------------------------------------------------------------
+
+### [VALIDO] 1. Peticion correcta — listar productos mas vendidos
+# Esperado: 200 OK
+# Cuerpo: arreglo JSON con 0..8 objetos ProductoMasVendidoRead.
+#   - Si NO hay mas vendidos -> []  (el front oculta la seccion / muestra mensaje)
+#   - Cada item: { codigo, nombre, precio_actual, imagen_url (string | null) }
+# Verificar: maximo 8 elementos; precio_actual = precio rebajado si el producto
+#   esta en oferta, si no el precio normal.
+# @name mas_vendidos_ok
+GET {{apiV1}}/products/mas-vendidos
+Accept: application/json
+
+
+### [VALIDO] 2. Sin cabecera Accept (FastAPI responde JSON por defecto)
+# Esperado: 200 OK, Content-Type: application/json
+GET {{apiV1}}/products/mas-vendidos
+
+
+### [VALIDO] 3. Query params espurios — deben ignorarse, no romper
+# Esperado: 200 OK (el endpoint no declara query params; se descartan)
+GET {{apiV1}}/products/mas-vendidos?orden=ventas&limite=999
+
+
+# ----------------------------------------------------------------------------
+# CASOS INVALIDOS (negativos de protocolo)
+# ----------------------------------------------------------------------------
+
+### [INVALIDO] 4. Metodo incorrecto: POST sobre una ruta GET
+# Esperado: 405 Method Not Allowed
+POST {{apiV1}}/products/mas-vendidos
+Content-Type: application/json
+
+{}
+
+
+### [INVALIDO] 5. Metodo incorrecto: DELETE
+# Esperado: 405 Method Not Allowed
+DELETE {{apiV1}}/products/mas-vendidos
+
+
+### [INVALIDO] 6. Metodo incorrecto: PUT
+# Esperado: 405 Method Not Allowed
+PUT {{apiV1}}/products/mas-vendidos
+
+
+### [INVALIDO] 7. Ruta con error tipografico (singular)
+# Esperado: 404 Not Found
+GET {{apiV1}}/products/mas-vendido
+
+
+### [INVALIDO] 8. Ruta con guion bajo en vez de guion medio
+# Esperado: 404 Not Found
+GET {{apiV1}}/products/mas_vendidos
+
+
+### [INVALIDO] 9. Barra final sobrante
+# Esperado: 404 Not Found
+GET {{apiV1}}/products/mas-vendidos/
+
+
+### [INVALIDO] 10. Falta el prefijo de version /api/v1
+# Esperado: 404 Not Found
+GET {{baseUrl}}/products/mas-vendidos

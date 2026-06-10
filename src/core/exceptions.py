@@ -21,6 +21,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         ContrasenaActualIncorrectaError,
         UsuarioNoEncontradoError,
     )
+    from product.exceptions import (
+        CategoriaNoEncontradaError,
+        ProductoNoEncontradoError,
+    )
 
     @app.exception_handler(CredencialesInvalidasError)
     async def _(request: Request, exc: CredencialesInvalidasError):
@@ -48,4 +52,12 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(UsuarioNoEncontradoError)
     async def _(request: Request, exc: UsuarioNoEncontradoError):  # noqa: F811
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(CategoriaNoEncontradaError)
+    async def _(request: Request, exc: CategoriaNoEncontradaError):  # noqa: F811
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(ProductoNoEncontradoError)
+    async def _(request: Request, exc: ProductoNoEncontradoError):  # noqa: F811
         return JSONResponse(status_code=404, content={"detail": str(exc)})

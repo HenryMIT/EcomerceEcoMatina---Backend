@@ -1,0 +1,82 @@
+# ============================================================================
+# RF-04 — Categorias unicas para el menu acordeon
+# Endpoint:  GET /api/v1/categories
+# Pruebas manuales con REST Client (VS Code) / HTTP Client (IntelliJ)
+#
+# Servidor:
+#   cd EcomerceEcoMatina---Backend/src
+#   python -m uvicorn main:app --reload
+#
+# El endpoint NO recibe entradas del cliente; los casos "invalidos" son
+# negativos de protocolo HTTP.
+# ============================================================================
+
+@baseUrl = http://localhost:8000
+@apiV1   = {{baseUrl}}/api/v1
+
+
+# ----------------------------------------------------------------------------
+# CASOS VALIDOS
+# ----------------------------------------------------------------------------
+
+### [VALIDO] 1. Peticion correcta — listar categorias disponibles
+# Esperado: 200 OK
+# Cuerpo: arreglo JSON con 0..N objetos CategoriaRead { codigo, nombre }.
+#   - Solo categorias activas (activa=1).
+#   - Orden alfabetico ascendente por nombre.
+#   - Si NO hay categorias activas -> []
+# @name categorias_ok
+GET {{apiV1}}/categories
+Accept: application/json
+
+
+### [VALIDO] 2. Sin cabecera Accept (FastAPI responde JSON por defecto)
+# Esperado: 200 OK, Content-Type: application/json
+GET {{apiV1}}/categories
+
+
+### [VALIDO] 3. Query params espurios — deben ignorarse, no romper
+# Esperado: 200 OK
+GET {{apiV1}}/categories?orden=desc&activa=0
+
+
+# ----------------------------------------------------------------------------
+# CASOS INVALIDOS (negativos de protocolo)
+# ----------------------------------------------------------------------------
+
+### [INVALIDO] 4. Metodo incorrecto: POST sobre una ruta GET
+# Esperado: 405 Method Not Allowed
+POST {{apiV1}}/categories
+Content-Type: application/json
+
+{}
+
+
+### [INVALIDO] 5. Metodo incorrecto: DELETE
+# Esperado: 405 Method Not Allowed
+DELETE {{apiV1}}/categories
+
+
+### [INVALIDO] 6. Metodo incorrecto: PUT
+# Esperado: 405 Method Not Allowed
+PUT {{apiV1}}/categories
+
+
+### [INVALIDO] 7. Ruta con error tipografico (singular)
+# Esperado: 404 Not Found
+GET {{apiV1}}/category
+
+
+### [INVALIDO] 8. Ruta en espanol (no es la definida)
+# Esperado: 404 Not Found
+GET {{apiV1}}/categorias
+
+
+### [INVALIDO] 9. Barra final sobrante
+# Esperado: 404 Not Found
+GET {{apiV1}}/categories/
+
+
+### [INVALIDO] 10. Falta el prefijo de version /api/v1
+# Esperado: 404 Not Found
+GET {{baseUrl}}/categories
