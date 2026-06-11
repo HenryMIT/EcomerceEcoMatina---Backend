@@ -25,6 +25,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         CategoriaNoEncontradaError,
         ProductoNoEncontradoError,
     )
+    from quote.exceptions import (
+        ArchivoInvalidoError,
+        DemasiadosArchivosError,
+    )
 
     @app.exception_handler(CredencialesInvalidasError)
     async def _(request: Request, exc: CredencialesInvalidasError):
@@ -61,3 +65,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProductoNoEncontradoError)
     async def _(request: Request, exc: ProductoNoEncontradoError):  # noqa: F811
         return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(ArchivoInvalidoError)
+    async def _(request: Request, exc: ArchivoInvalidoError):  # noqa: F811
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(DemasiadosArchivosError)
+    async def _(request: Request, exc: DemasiadosArchivosError):  # noqa: F811
+        return JSONResponse(status_code=400, content={"detail": str(exc)})

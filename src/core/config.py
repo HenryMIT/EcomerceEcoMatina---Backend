@@ -32,6 +32,24 @@ class Settings(BaseSettings):
     # URL base del frontend (para armar links en correos)
     frontend_url: str = "http://localhost:5173"
 
+    # Almacenamiento de archivos (cotizaciones RF-31, comprobantes RF-25)
+    # storage_mode: "cloudinary" sube a la nube; "local" guarda en disco (desarrollo)
+    storage_mode: str = "cloudinary"
+    cloudinary_cloud_name: str = ""
+    cloudinary_api_key: str = ""
+    cloudinary_api_secret: str = ""
+    # Solo para storage_mode=local
+    local_storage_dir: str = "media"
+    local_storage_base_url: str = "http://localhost:8000/media"
+
+    # Notificacion de cotizaciones por WhatsApp (RF-32)
+    # whatsapp_mode: "console" imprime en logs (desarrollo); "api" usa WhatsApp Cloud API
+    whatsapp_mode: str = "console"
+    whatsapp_destino: str = ""            # numero de Agromatina que recibe las cotizaciones
+    whatsapp_phone_number_id: str = ""    # WhatsApp Cloud API (Meta)
+    whatsapp_access_token: str = ""
+    callmebot_apikey: str = ""            # solo si whatsapp_mode=callmebot
+
     debug: bool = False
 
 
