@@ -1,0 +1,274 @@
+# ============================================================================
+# SYNC — Sincronizacion de catalogo (proceso P4, escritura desde el escritorio)
+# Endpoints:
+#   PUT  /api/v1/sync/products/{codigo}   -> upsert individual (201 creado / 200 actualizado)
+#   POST /api/v1/sync/products/batch      -> upsert masivo atomico
+# Pruebas manuales con REST Client (VS Code) / HTTP Client (IntelliJ)
+#
+# Servidor:
+#   cd EcomerceEcoMatina---Backend/src
+#   python -m uvicorn main:app --reload
+#
+# Autenticacion: TODOS exigen el header X-API-Key (maquina-a-maquina, RN-02).
+# El valor debe coincidir con SYNC_API_KEY del .env. El de abajo es el default
+# de desarrollo (core/config.py); cambialo si configuraste otro en tu .env.
+#
+# Categorias de los datos de prueba: CAT-HER, CAT-PIN, CAT-FON, CAT-ELE,
+# CAT-CON, CAT-JAR, CAT-FER, CAT-SEG.
+# ============================================================================
+
+@baseUrl  = http://localhost:8000
+@sync     = {{baseUrl}}/api/v1/sync
+@apiKey   = cambia-esta-api-key-de-sync-en-produccion
+
+
+# ----------------------------------------------------------------------------
+# CASOS VALIDOS — UPSERT INDIVIDUAL (PUT)
+# ----------------------------------------------------------------------------
+
+### [VALIDO] 1. Crear un producto nuevo
+# Esperado: 201 Created -> {"codigo":"SYNC-001","accion":"creado"}
+# Verificar luego con: GET /api/v1/products/SYNC-001 (debe existir con su imagen).
+# @name crear_producto
+PUT {{sync}}/products/SYNC-001
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "nombre": "Taladro percutor 1/2 (sync)",
+  "descripcion": "Producto cargado via endpoint de sincronizacion",
+  "precio": "45000.00",
+  "precio_oferta": "38250.00",
+  "en_oferta": true,
+  "mas_vendido": false,
+  "stock": "12.000",
+  "categoria_codigo": "CAT-HER",
+  "activo": true,
+  "imagenes": [
+    { "url": "https://res.cloudinary.com/agromatina/image/upload/v1/sync-001-a.jpg", "es_principal": true, "posicion": 0 },
+    { "url": "https://res.cloudinary.com/agromatina/image/upload/v1/sync-001-b.jpg", "es_principal": false, "posicion": 1 }
+  ]
+}
+
+
+### [VALIDO] 2. Actualizar el mismo producto (idempotencia del upsert)
+# Esperado: 200 OK -> {"codigo":"SYNC-001","accion":"actualizado"}
+# Cambia precio, lo saca de oferta y reemplaza la galeria por UNA sola imagen
+# (las dos anteriores deben eliminarse por el cascade delete-orphan).
+PUT {{sync}}/products/SYNC-001
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "nombre": "Taladro percutor 1/2 (actualizado)",
+  "descripcion": "Mismo codigo, datos actualizados",
+  "precio": "47000.00",
+  "precio_oferta": null,
+  "en_oferta": false,
+  "mas_vendido": true,
+  "stock": "8.000",
+  "categoria_codigo": "CAT-HER",
+  "activo": true,
+  "imagenes": [
+    { "url": "https://res.cloudinary.com/agromatina/image/upload/v1/sync-001-nueva.jpg", "es_principal": true, "posicion": 0 }
+  ]
+}
+
+
+### [VALIDO] 3. Producto minimo (sin oferta, sin imagenes, defaults)
+# Esperado: 201 Created
+PUT {{sync}}/products/SYNC-002
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "nombre": "Brocha 2 pulgadas",
+  "precio": "1500.00",
+  "categoria_codigo": "CAT-PIN"
+}
+
+
+# ----------------------------------------------------------------------------
+# CASOS VALIDOS — UPSERT MASIVO (POST batch)
+# ----------------------------------------------------------------------------
+
+### [VALIDO] 4. Lote: uno nuevo + uno que ya existe (mezcla creado/actualizado)
+# Esperado: 200 OK -> {"total":2,"creados":1,"actualizados":1,"resultados":[...]}
+# @name lote_ok
+POST {{sync}}/products/batch
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "productos": [
+    {
+      "codigo": "SYNC-002",
+      "nombre": "Brocha 2 pulgadas (actualizada)",
+      "precio": "1700.00",
+      "categoria_codigo": "CAT-PIN"
+    },
+    {
+      "codigo": "SYNC-003",
+      "nombre": "Llave stillson 14",
+      "precio": "9800.00",
+      "categoria_codigo": "CAT-FON",
+      "imagenes": [
+        { "url": "https://res.cloudinary.com/agromatina/image/upload/v1/sync-003.jpg", "es_principal": true }
+      ]
+    }
+  ]
+}
+
+
+# ----------------------------------------------------------------------------
+# CASOS DE AUTENTICACION (401 — API key ausente o incorrecta)
+# ----------------------------------------------------------------------------
+
+### [AUTH] 5. Sin header X-API-Key
+# Esperado: 401 Unauthorized -> {"detail":"API key invalida o ausente."}
+PUT {{sync}}/products/SYNC-099
+Content-Type: application/json
+
+{
+  "nombre": "No deberia entrar",
+  "precio": "1000.00",
+  "categoria_codigo": "CAT-HER"
+}
+
+
+### [AUTH] 6. API key incorrecta
+# Esperado: 401 Unauthorized
+PUT {{sync}}/products/SYNC-099
+Content-Type: application/json
+X-API-Key: clave-equivocada
+
+{
+  "nombre": "No deberia entrar",
+  "precio": "1000.00",
+  "categoria_codigo": "CAT-HER"
+}
+
+
+# ----------------------------------------------------------------------------
+# CASOS INVALIDOS / NO ENCONTRADO (404)
+# ----------------------------------------------------------------------------
+
+### [INVALIDO] 7. Categoria inexistente (individual)
+# Esperado: 404 Not Found -> {"detail":"No existe la categoria 'CAT-XXX'. ..."}
+PUT {{sync}}/products/SYNC-100
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "nombre": "Producto con categoria invalida",
+  "precio": "1000.00",
+  "categoria_codigo": "CAT-XXX"
+}
+
+
+### [INVALIDO] 8. Lote atomico: el 2do producto tiene categoria invalida
+# Esperado: 404 Not Found. NINGUNO de los dos debe persistir (rollback total).
+# Verificar luego: GET /api/v1/products/SYNC-200 -> 404 (no se creo).
+POST {{sync}}/products/batch
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "productos": [
+    {
+      "codigo": "SYNC-200",
+      "nombre": "Este NO debe quedar (rollback)",
+      "precio": "1000.00",
+      "categoria_codigo": "CAT-HER"
+    },
+    {
+      "codigo": "SYNC-201",
+      "nombre": "Categoria invalida -> revierte el lote",
+      "precio": "2000.00",
+      "categoria_codigo": "CAT-XXX"
+    }
+  ]
+}
+
+
+# ----------------------------------------------------------------------------
+# CASOS DE VALIDACION (422 — el cuerpo no cumple el esquema)
+# ----------------------------------------------------------------------------
+
+### [VALIDACION] 9. en_oferta=true pero sin precio_oferta
+# Esperado: 422 Unprocessable Entity (regla del model_validator)
+PUT {{sync}}/products/SYNC-300
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "nombre": "Oferta sin precio de oferta",
+  "precio": "5000.00",
+  "en_oferta": true,
+  "categoria_codigo": "CAT-HER"
+}
+
+
+### [VALIDACION] 10. Falta campo obligatorio (precio)
+# Esperado: 422 Unprocessable Entity
+PUT {{sync}}/products/SYNC-301
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "nombre": "Sin precio",
+  "categoria_codigo": "CAT-HER"
+}
+
+
+### [VALIDACION] 11. Precio negativo
+# Esperado: 422 Unprocessable Entity (precio ge=0)
+PUT {{sync}}/products/SYNC-302
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "nombre": "Precio negativo",
+  "precio": "-100.00",
+  "categoria_codigo": "CAT-HER"
+}
+
+
+### [VALIDACION] 12. Lote vacio
+# Esperado: 422 Unprocessable Entity (productos min_length=1)
+POST {{sync}}/products/batch
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "productos": []
+}
+
+
+# ----------------------------------------------------------------------------
+# CASOS INVALIDOS — PROTOCOLO
+# ----------------------------------------------------------------------------
+
+### [INVALIDO] 13. Metodo incorrecto: POST a la ruta individual
+# Esperado: 405 Method Not Allowed
+POST {{sync}}/products/SYNC-001
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{}
+
+
+# ----------------------------------------------------------------------------
+# VERIFICACION CRUZADA (lectura del catalogo — confirma que el sync funciono)
+# ----------------------------------------------------------------------------
+
+### [VERIFICA] 14. El producto creado aparece en el catalogo publico
+# Esperado: 200 OK con el detalle de SYNC-001 (sin requerir API key, es lectura)
+GET {{baseUrl}}/api/v1/products/SYNC-001
+Accept: application/json
+
+
+### [VERIFICA] 15. El producto del rollback NO existe
+# Esperado: 404 Not Found (confirma la atomicidad del caso 8)
+GET {{baseUrl}}/api/v1/products/SYNC-200
+Accept: application/json

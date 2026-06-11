@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     whatsapp_access_token: str = ""
     callmebot_apikey: str = ""            # solo si whatsapp_mode=callmebot
 
+    # Sincronizacion de catalogo (proceso P4): API key estatica que presenta
+    # la app de escritorio de Jakob en el header X-API-Key. NO es un usuario web
+    # (RN-02): es autenticacion maquina-a-maquina. Cambiar SIEMPRE en produccion.
+    sync_api_key: str = "cambia-esta-api-key-de-sync-en-produccion"
+
     debug: bool = False
 
 
