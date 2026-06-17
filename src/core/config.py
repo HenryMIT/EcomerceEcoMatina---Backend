@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     verification_token_hours: int = 24
     recovery_token_minutes: int = 30
 
+    # Limite de reenvios del correo de verificacion (CU-07 FE-03)
+    verification_resend_limit: int = 5            # envios permitidos por ventana
+    verification_resend_window_minutes: int = 60  # tamaño de la ventana
+
     # URL base del frontend (para armar links en correos)
     frontend_url: str = "http://localhost:5173"
 

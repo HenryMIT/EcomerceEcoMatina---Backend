@@ -140,3 +140,15 @@ class TokenVerificacionRepository:
     def mark_used(self, token_obj: TokenVerificacion) -> None:
         token_obj.usado = 1
         self._db.flush()
+
+    def count_recientes(self, usuario_id: int, tipo: str, desde: datetime) -> int:
+        """Cuenta los tokens del tipo dado emitidos para el usuario desde 'desde'."""
+        return (
+            self._db.query(TokenVerificacion)
+            .filter(
+                TokenVerificacion.usuario_id == usuario_id,
+                TokenVerificacion.tipo == tipo,
+                TokenVerificacion.created_at >= desde,
+            )
+            .count()
+        )

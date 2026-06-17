@@ -15,12 +15,14 @@ from auth.exceptions import (
     CredencialesInvalidasError,
     CuentaNoVerificadaError,
     IdentificacionYaRegistradaError,
+    LimiteReenvioError,
     TokenInvalidoOExpiradoError,
     UsuarioNoEncontradoError,
 )
 from auth.schemas import (
     CambiarContrasenaRequest,
     LoginRequest,
+    ReenviarVerificacionRequest,
     RegisterRequest,
     ResetearContrasenaRequest,
     SolicitarRecuperacionRequest,
@@ -244,6 +246,87 @@ class TestVerificarCuenta:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# reenviar_verificacion()  (CU-07 FE-03)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestReenviarVerificacion:
+
+    def _request(self, correo: str = "juan@test.com") -> ReenviarVerificacionRequest:
+        return ReenviarVerificacionRequest(correo=correo)
+
+    def test_reenvio_exitoso_crea_token_de_verificacion_y_envia_correo(
+        self, service, mock_usuario_repo, mock_token_repo, mock_email, usuario_no_verificado
+    ):
+        mock_usuario_repo.get_by_correo.return_value = usuario_no_verificado
+        mock_token_repo.count_recientes.return_value = 0
+
+        service.reenviar_verificacion(self._request())
+
+        mock_token_repo.create.assert_called_once()
+        tipo = mock_token_repo.create.call_args[0][1]
+        assert tipo == "verificacion"
+        mock_email.send.assert_called_once()
+        assert mock_email.send.call_args[0][0] == "juan@test.com"
+
+    def test_reenvio_consulta_el_limite_por_tipo_verificacion(
+        self, service, mock_usuario_repo, mock_token_repo, usuario_no_verificado
+    ):
+        mock_usuario_repo.get_by_correo.return_value = usuario_no_verificado
+        mock_token_repo.count_recientes.return_value = 0
+
+        service.reenviar_verificacion(self._request())
+
+        mock_token_repo.count_recientes.assert_called_once()
+        assert mock_token_repo.count_recientes.call_args[0][1] == "verificacion"
+
+    def test_reenvio_falla_si_supera_el_limite(
+        self, service, mock_usuario_repo, mock_token_repo, mock_email, usuario_no_verificado
+    ):
+        mock_usuario_repo.get_by_correo.return_value = usuario_no_verificado
+        mock_token_repo.count_recientes.return_value = 5  # ya alcanzo el limite
+
+        with pytest.raises(LimiteReenvioError):
+            service.reenviar_verificacion(self._request())
+
+        mock_token_repo.create.assert_not_called()
+        mock_email.send.assert_not_called()
+
+    def test_no_reenvia_si_la_cuenta_ya_esta_verificada(
+        self, service, mock_usuario_repo, mock_token_repo, mock_email, usuario_verificado
+    ):
+        mock_usuario_repo.get_by_correo.return_value = usuario_verificado
+
+        result = service.reenviar_verificacion(self._request())
+
+        assert result.mensaje
+        mock_token_repo.create.assert_not_called()
+        mock_email.send.assert_not_called()
+
+    def test_respuesta_identica_si_correo_no_existe(
+        self, service, mock_usuario_repo, mock_token_repo, mock_email
+    ):
+        """Anti-enumeracion: misma respuesta y sin envio si el correo no existe."""
+        mock_usuario_repo.get_by_correo.return_value = None
+
+        result = service.reenviar_verificacion(self._request("noexiste@test.com"))
+
+        assert result.mensaje
+        mock_token_repo.create.assert_not_called()
+        mock_email.send.assert_not_called()
+
+    def test_fallo_de_correo_no_lanza_excepcion(
+        self, service, mock_usuario_repo, mock_token_repo, mock_email, usuario_no_verificado
+    ):
+        mock_usuario_repo.get_by_correo.return_value = usuario_no_verificado
+        mock_token_repo.count_recientes.return_value = 0
+        mock_email.send.side_effect = ConnectionError("SMTP caido")
+
+        result = service.reenviar_verificacion(self._request())
+
+        assert result.mensaje  # el fallo de SMTP no debe propagar
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # refresh_token()
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -337,6 +420,31 @@ class TestCambiarContrasena:
         service.cambiar_contrasena(10, self._request())
 
         mock_usuario_repo.update_refresh_token.assert_called_once_with(usuario_verificado, None)
+
+    def test_cambio_exitoso_envia_notificacion_al_correo_del_usuario(
+        self, service, mock_usuario_repo, mock_email, usuario_verificado
+    ):
+        """CU-11 paso 7: se notifica el cambio al correo del cliente."""
+        mock_usuario_repo.get_by_id.return_value = usuario_verificado
+
+        service.cambiar_contrasena(10, self._request())
+
+        mock_email.send.assert_called_once()
+        assert mock_email.send.call_args[0][0] == usuario_verificado.correo
+        asunto = mock_email.send.call_args[0][1]
+        assert "actualizada" in asunto.lower()
+
+    def test_fallo_de_correo_no_revierte_el_cambio(
+        self, service, mock_usuario_repo, mock_email, usuario_verificado
+    ):
+        """Si el SMTP falla, el cambio ya se aplico — no debe propagar la excepcion."""
+        mock_usuario_repo.get_by_id.return_value = usuario_verificado
+        mock_email.send.side_effect = ConnectionError("SMTP no disponible")
+
+        result = service.cambiar_contrasena(10, self._request())
+
+        assert "actualizada" in result.mensaje.lower()
+        mock_usuario_repo.update_clave.assert_called_once()
 
     def test_cambio_falla_con_contrasena_actual_incorrecta(
         self, service, mock_usuario_repo, usuario_verificado

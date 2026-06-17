@@ -68,3 +68,6 @@ class ITokenRepository(Protocol):
 
     def mark_used(self, token_obj: TokenVerificacion) -> None:
         ...
+
+    def count_recientes(self, usuario_id: int, tipo: str, desde: datetime) -> int:
+        ...

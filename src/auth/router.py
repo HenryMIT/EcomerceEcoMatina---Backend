@@ -18,6 +18,7 @@ from auth.schemas import (
     LoginRequest,
     MensajeResponse,
     RefreshRequest,
+    ReenviarVerificacionRequest,
     RegisterRequest,
     RegisterResponse,
     ResetearContrasenaRequest,
@@ -69,6 +70,23 @@ def verify_account(
     service: AuthService = Depends(get_auth_service),
 ) -> MensajeResponse:
     return service.verificar_cuenta(data.token)
+
+
+@router.post(
+    "/resend-verification",
+    response_model=MensajeResponse,
+    summary="Reenviar correo de verificacion (CU-07)",
+    description=(
+        "Reenvia el enlace de verificacion de cuenta. La respuesta es identica "
+        "exista o no el correo (anti-enumeracion). Limitado a 5 envios por hora; "
+        "al excederlo responde 429."
+    ),
+)
+def resend_verification(
+    data: ReenviarVerificacionRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> MensajeResponse:
+    return service.reenviar_verificacion(data)
 
 
 @router.post(

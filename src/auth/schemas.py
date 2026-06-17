@@ -81,6 +81,10 @@ class SolicitarRecuperacionRequest(BaseModel):
     correo: EmailStr = Field(..., examples=["juan@example.com"])
 
 
+class ReenviarVerificacionRequest(BaseModel):
+    correo: EmailStr = Field(..., examples=["juan@example.com"])
+
+
 class ResetearContrasenaRequest(BaseModel):
     token: str = Field(..., description="Token recibido en el correo de recuperacion")
     clave_nueva: str = Field(..., min_length=8, max_length=100)

@@ -21,6 +21,7 @@ from auth.exceptions import (
     CorreoYaRegistradoError,
     CredencialesInvalidasError,
     CuentaNoVerificadaError,
+    LimiteReenvioError,
     TokenInvalidoOExpiradoError,
 )
 from auth.schemas import (
@@ -186,6 +187,41 @@ class TestVerifyAccountEndpoint:
         )
 
         assert response.status_code == 400
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POST /api/v1/auth/resend-verification   (CU-07 FE-03)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestResendVerificationEndpoint:
+
+    def test_reenvio_retorna_200(self, client, mock_service):
+        mock_service.reenviar_verificacion.return_value = MensajeResponse(
+            mensaje="Si tu cuenta existe y aun no esta verificada..."
+        )
+        response = client.post(
+            "/api/v1/auth/resend-verification", json={"correo": "juan@test.com"}
+        )
+
+        assert response.status_code == 200
+        assert "mensaje" in response.json()
+
+    def test_limite_excedido_retorna_429(self, client, mock_service):
+        mock_service.reenviar_verificacion.side_effect = LimiteReenvioError(
+            "Has alcanzado el limite de envios. Intenta nuevamente en una hora."
+        )
+        response = client.post(
+            "/api/v1/auth/resend-verification", json={"correo": "juan@test.com"}
+        )
+
+        assert response.status_code == 429
+        assert "detail" in response.json()
+
+    def test_correo_invalido_retorna_422(self, client):
+        response = client.post(
+            "/api/v1/auth/resend-verification", json={"correo": "no-es-correo"}
+        )
+        assert response.status_code == 422
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
