@@ -12,7 +12,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from auth.models import Cliente, TokenVerificacion, Usuario
+from auth.models import CambioCorreo, Cliente, TokenVerificacion, Usuario
 
 
 class ClienteRepository:
@@ -49,6 +49,20 @@ class ClienteRepository:
         self._db.add(cliente)
         self._db.flush()  # obtiene el id sin hacer commit
         return cliente
+
+    def update_datos(
+        self,
+        cliente: Cliente,
+        nombre: str,
+        primer_apellido: str,
+        segundo_apellido: Optional[str],
+        telefono: str,
+    ) -> None:
+        cliente.nombre = nombre
+        cliente.primer_apellido = primer_apellido
+        cliente.segundo_apellido = segundo_apellido
+        cliente.telefono = telefono
+        self._db.flush()
 
 
 class UsuarioRepository:
@@ -99,6 +113,10 @@ class UsuarioRepository:
     def update_ultimo_acceso(self, usuario: Usuario) -> None:
         # MySQL DATETIME no almacena zona horaria; guardamos en UTC sin tzinfo
         usuario.ultimo_acceso = datetime.now(timezone.utc).replace(tzinfo=None)
+        self._db.flush()
+
+    def update_correo(self, usuario: Usuario, correo: str) -> None:
+        usuario.correo = correo
         self._db.flush()
 
 
@@ -152,3 +170,40 @@ class TokenVerificacionRepository:
             )
             .count()
         )
+
+
+class CambioCorreoRepository:
+    """Persistencia de las solicitudes de cambio de correo del perfil (CU-19)."""
+
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def create(
+        self, usuario_id: int, nuevo_correo: str, token: str, expira_en: datetime
+    ) -> CambioCorreo:
+        cambio = CambioCorreo(
+            usuario_id=usuario_id,
+            nuevo_correo=nuevo_correo,
+            token=token,
+            expira_en=expira_en,
+            usado=0,
+        )
+        self._db.add(cambio)
+        self._db.flush()
+        return cambio
+
+    def get_valid(self, token: str) -> Optional[CambioCorreo]:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        return (
+            self._db.query(CambioCorreo)
+            .filter(
+                CambioCorreo.token == token,
+                CambioCorreo.usado == 0,
+                CambioCorreo.expira_en > now,
+            )
+            .first()
+        )
+
+    def mark_used(self, cambio: CambioCorreo) -> None:
+        cambio.usado = 1
+        self._db.flush()

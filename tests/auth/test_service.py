@@ -20,7 +20,9 @@ from auth.exceptions import (
     UsuarioNoEncontradoError,
 )
 from auth.schemas import (
+    ActualizarPerfilRequest,
     CambiarContrasenaRequest,
+    ConfirmarCambioCorreoRequest,
     LoginRequest,
     ReenviarVerificacionRequest,
     RegisterRequest,
@@ -518,6 +520,145 @@ class TestSolicitarRecuperacion:
         )
 
         assert result.mensaje
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ver_perfil() / actualizar_perfil() / confirmar_cambio_correo()  (CU-19)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestVerPerfil:
+
+    def test_ver_perfil_retorna_datos_completos(
+        self, service, mock_usuario_repo, usuario_verificado
+    ):
+        mock_usuario_repo.get_by_id.return_value = usuario_verificado
+
+        perfil = service.ver_perfil(10)
+
+        assert perfil.nombre == "Juan"
+        assert perfil.tipo_identificacion == "cedula"
+        assert perfil.numero_identificacion == "112345678"
+        assert perfil.correo == "juan@test.com"
+        assert perfil.telefono == "88887777"
+
+    def test_ver_perfil_falla_si_usuario_no_existe(self, service, mock_usuario_repo):
+        mock_usuario_repo.get_by_id.return_value = None
+
+        with pytest.raises(UsuarioNoEncontradoError):
+            service.ver_perfil(9999)
+
+
+class TestActualizarPerfil:
+
+    def _request(self, correo: str = "juan@test.com") -> ActualizarPerfilRequest:
+        return ActualizarPerfilRequest(
+            nombre="Juan Carlos",
+            primer_apellido="Perez",
+            segundo_apellido="Lopez",
+            telefono="88886666",
+            correo=correo,
+        )
+
+    def test_sin_cambio_de_correo_actualiza_nombre_y_telefono(
+        self, service, mock_usuario_repo, mock_cliente_repo,
+        mock_cambio_correo_repo, mock_email, usuario_verificado
+    ):
+        mock_usuario_repo.get_by_id.return_value = usuario_verificado
+
+        result = service.actualizar_perfil(10, self._request(correo="juan@test.com"))
+
+        mock_cliente_repo.update_datos.assert_called_once()
+        assert result.correo_pendiente_confirmacion is False
+        mock_cambio_correo_repo.create.assert_not_called()
+        mock_email.send.assert_not_called()
+
+    def test_cambio_de_correo_crea_solicitud_y_envia_enlace_al_nuevo_correo(
+        self, service, mock_usuario_repo, mock_cliente_repo,
+        mock_cambio_correo_repo, mock_email, usuario_verificado
+    ):
+        mock_usuario_repo.get_by_id.return_value = usuario_verificado
+        mock_usuario_repo.get_by_correo.return_value = None  # nuevo correo disponible
+
+        result = service.actualizar_perfil(10, self._request(correo="nuevo@test.com"))
+
+        mock_cliente_repo.update_datos.assert_called_once()  # nombre/telefono inmediato
+        mock_cambio_correo_repo.create.assert_called_once()
+        assert mock_cambio_correo_repo.create.call_args[0][1] == "nuevo@test.com"
+        mock_email.send.assert_called_once()
+        assert mock_email.send.call_args[0][0] == "nuevo@test.com"
+        assert result.correo_pendiente_confirmacion is True
+
+    def test_cambio_de_correo_falla_si_correo_ya_esta_en_uso(
+        self, service, mock_usuario_repo, mock_cliente_repo,
+        mock_cambio_correo_repo, usuario_verificado
+    ):
+        """FE-02: no se escribe nada y se conserva el correo actual."""
+        mock_usuario_repo.get_by_id.return_value = usuario_verificado
+        mock_usuario_repo.get_by_correo.return_value = MagicMock(id=99)  # ya registrado
+
+        with pytest.raises(CorreoYaRegistradoError):
+            service.actualizar_perfil(10, self._request(correo="nuevo@test.com"))
+
+        mock_cliente_repo.update_datos.assert_not_called()
+        mock_cambio_correo_repo.create.assert_not_called()
+
+    def test_actualizar_falla_si_usuario_no_existe(self, service, mock_usuario_repo):
+        mock_usuario_repo.get_by_id.return_value = None
+
+        with pytest.raises(UsuarioNoEncontradoError):
+            service.actualizar_perfil(9999, self._request())
+
+
+class TestConfirmarCambioCorreo:
+
+    def _request(self, token: str = "token-cambio-correo-xyz") -> ConfirmarCambioCorreoRequest:
+        return ConfirmarCambioCorreoRequest(token=token)
+
+    def test_confirmacion_exitosa_actualiza_el_correo(
+        self, service, mock_usuario_repo, mock_cambio_correo_repo,
+        usuario_verificado, cambio_correo_mock
+    ):
+        mock_cambio_correo_repo.get_valid.return_value = cambio_correo_mock
+        mock_usuario_repo.get_by_id.return_value = usuario_verificado
+        mock_usuario_repo.get_by_correo.return_value = None  # nadie mas lo tomo
+
+        result = service.confirmar_cambio_correo(self._request())
+
+        mock_cambio_correo_repo.mark_used.assert_called_once_with(cambio_correo_mock)
+        mock_usuario_repo.update_correo.assert_called_once_with(
+            usuario_verificado, "nuevo@test.com"
+        )
+        assert "actualizado" in result.mensaje.lower()
+
+    def test_confirmacion_falla_con_token_invalido(
+        self, service, mock_cambio_correo_repo
+    ):
+        mock_cambio_correo_repo.get_valid.return_value = None
+
+        with pytest.raises(TokenInvalidoOExpiradoError):
+            service.confirmar_cambio_correo(self._request(token="token-vencido"))
+
+    def test_confirmacion_falla_si_usuario_no_existe(
+        self, service, mock_usuario_repo, mock_cambio_correo_repo, cambio_correo_mock
+    ):
+        mock_cambio_correo_repo.get_valid.return_value = cambio_correo_mock
+        mock_usuario_repo.get_by_id.return_value = None
+
+        with pytest.raises(UsuarioNoEncontradoError):
+            service.confirmar_cambio_correo(self._request())
+
+    def test_confirmacion_falla_si_otro_usuario_ya_tomo_el_correo(
+        self, service, mock_usuario_repo, mock_cambio_correo_repo,
+        usuario_verificado, cambio_correo_mock
+    ):
+        mock_cambio_correo_repo.get_valid.return_value = cambio_correo_mock
+        mock_usuario_repo.get_by_id.return_value = usuario_verificado
+        mock_usuario_repo.get_by_correo.return_value = MagicMock(id=99)  # otro usuario
+
+        with pytest.raises(CorreoYaRegistradoError):
+            service.confirmar_cambio_correo(self._request())
+
+        mock_usuario_repo.update_correo.assert_not_called()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -9,8 +9,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from auth.interfaces import IClienteRepository, ITokenRepository, IUsuarioRepository
-from auth.models import Cliente, TokenVerificacion, Usuario
+from auth.interfaces import (
+    ICambioCorreoRepository,
+    IClienteRepository,
+    ITokenRepository,
+    IUsuarioRepository,
+)
+from auth.models import CambioCorreo, Cliente, TokenVerificacion, Usuario
 from auth.service import AuthService
 from core.email import IEmailSender
 from core.security import hash_password
@@ -34,6 +39,11 @@ def mock_token_repo() -> MagicMock:
 
 
 @pytest.fixture
+def mock_cambio_correo_repo() -> MagicMock:
+    return MagicMock(spec=ICambioCorreoRepository)
+
+
+@pytest.fixture
 def mock_email() -> MagicMock:
     return MagicMock(spec=IEmailSender)
 
@@ -44,12 +54,14 @@ def service(
     mock_usuario_repo,
     mock_token_repo,
     mock_email,
+    mock_cambio_correo_repo,
 ) -> AuthService:
     return AuthService(
         cliente_repo=mock_cliente_repo,
         usuario_repo=mock_usuario_repo,
         token_repo=mock_token_repo,
         email_sender=mock_email,
+        cambio_correo_repo=mock_cambio_correo_repo,
     )
 
 
@@ -61,11 +73,15 @@ def cliente_mock() -> MagicMock:
     c.id = 1
     c.nombre = "Juan"
     c.primer_apellido = "Perez"
+    c.segundo_apellido = "Lopez"
+    c.tipo_identificacion = "cedula"
+    c.numero_identificacion = "112345678"
+    c.telefono = "88887777"
     return c
 
 
 @pytest.fixture
-def usuario_verificado() -> MagicMock:
+def usuario_verificado(cliente_mock) -> MagicMock:
     u = MagicMock(spec=Usuario)
     u.id = 10
     u.correo = "juan@test.com"
@@ -73,6 +89,7 @@ def usuario_verificado() -> MagicMock:
     u.estado = "verificada"
     u.tk_refresh = "refresh-token-abc"
     u.clave = hash_password("MiClave123")
+    u.cliente = cliente_mock
     return u
 
 
@@ -104,6 +121,18 @@ def token_recuperacion_mock() -> MagicMock:
     t.expira_en = datetime(2099, 1, 1)
     t.usado = 0
     return t
+
+
+@pytest.fixture
+def cambio_correo_mock() -> MagicMock:
+    cc = MagicMock(spec=CambioCorreo)
+    cc.id = 1
+    cc.usuario_id = 10
+    cc.nuevo_correo = "nuevo@test.com"
+    cc.token = "token-cambio-correo-xyz"
+    cc.expira_en = datetime(2099, 1, 1)
+    cc.usado = 0
+    return cc
 
 
 # ── Datos de request validos ──────────────────────────────────────────────────

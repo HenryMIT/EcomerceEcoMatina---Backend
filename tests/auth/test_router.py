@@ -25,7 +25,9 @@ from auth.exceptions import (
     TokenInvalidoOExpiradoError,
 )
 from auth.schemas import (
+    ActualizarPerfilResponse,
     MensajeResponse,
+    PerfilResponse,
     RegisterResponse,
     TokenResponse,
     UsuarioActualResponse,
@@ -390,3 +392,104 @@ class TestMeEndpoint:
 
         assert "clave" not in data
         assert "tk_refresh" not in data
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GET/PUT /api/v1/auth/profile   [protegido]   (CU-19)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestProfileEndpoint:
+
+    PERFIL = PerfilResponse(
+        nombre="Juan",
+        primer_apellido="Perez",
+        segundo_apellido="Lopez",
+        tipo_identificacion="cedula",
+        numero_identificacion="112345678",
+        correo="juan@test.com",
+        telefono="88887777",
+    )
+
+    PAYLOAD = {
+        "nombre": "Juan Carlos",
+        "primer_apellido": "Perez",
+        "telefono": "88886666",
+        "correo": "juan@test.com",
+    }
+
+    def test_get_profile_retorna_200(self, client, mock_service):
+        mock_service.ver_perfil.return_value = self.PERFIL
+
+        response = client.get("/api/v1/auth/profile")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["numero_identificacion"] == "112345678"
+        assert data["telefono"] == "88887777"
+
+    def test_get_profile_sin_token_retorna_401(self, client_sin_auth):
+        assert client_sin_auth.get("/api/v1/auth/profile").status_code == 401
+
+    def test_update_profile_retorna_200(self, client, mock_service):
+        mock_service.actualizar_perfil.return_value = ActualizarPerfilResponse(
+            mensaje="Datos actualizados con exito.", correo_pendiente_confirmacion=False
+        )
+        response = client.put("/api/v1/auth/profile", json=self.PAYLOAD)
+
+        assert response.status_code == 200
+        assert response.json()["correo_pendiente_confirmacion"] is False
+
+    def test_update_profile_pasa_id_del_usuario_actual(self, client, mock_service):
+        mock_service.actualizar_perfil.return_value = ActualizarPerfilResponse(mensaje="ok")
+
+        client.put("/api/v1/auth/profile", json=self.PAYLOAD)
+
+        assert mock_service.actualizar_perfil.call_args[0][0] == USUARIO_ACTUAL.id
+
+    def test_update_profile_correo_en_uso_retorna_409(self, client, mock_service):
+        mock_service.actualizar_perfil.side_effect = CorreoYaRegistradoError(
+            "Este correo ya esta registrado"
+        )
+        response = client.put("/api/v1/auth/profile", json=self.PAYLOAD)
+
+        assert response.status_code == 409
+
+    def test_update_profile_datos_invalidos_retorna_422(self, client):
+        response = client.put(
+            "/api/v1/auth/profile",
+            json={"nombre": "Juan", "primer_apellido": "Perez",
+                  "telefono": "123", "correo": "no-es-correo"},
+        )
+        assert response.status_code == 422
+
+    def test_update_profile_sin_token_retorna_401(self, client_sin_auth):
+        assert client_sin_auth.put(
+            "/api/v1/auth/profile", json=self.PAYLOAD
+        ).status_code == 401
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POST /api/v1/auth/confirm-email-change   (CU-19)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestConfirmEmailChangeEndpoint:
+
+    def test_confirmacion_retorna_200(self, client, mock_service):
+        mock_service.confirmar_cambio_correo.return_value = MensajeResponse(
+            mensaje="Tu correo fue actualizado exitosamente."
+        )
+        response = client.post(
+            "/api/v1/auth/confirm-email-change", json={"token": "token-valido"}
+        )
+
+        assert response.status_code == 200
+
+    def test_token_invalido_retorna_400(self, client, mock_service):
+        mock_service.confirmar_cambio_correo.side_effect = TokenInvalidoOExpiradoError(
+            "Enlace invalido o expirado"
+        )
+        response = client.post(
+            "/api/v1/auth/confirm-email-change", json={"token": "token-vencido"}
+        )
+
+        assert response.status_code == 400

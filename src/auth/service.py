@@ -18,11 +18,20 @@ from auth.exceptions import (
     TokenInvalidoOExpiradoError,
     UsuarioNoEncontradoError,
 )
-from auth.interfaces import IClienteRepository, ITokenRepository, IUsuarioRepository
+from auth.interfaces import (
+    ICambioCorreoRepository,
+    IClienteRepository,
+    ITokenRepository,
+    IUsuarioRepository,
+)
 from auth.schemas import (
+    ActualizarPerfilRequest,
+    ActualizarPerfilResponse,
     CambiarContrasenaRequest,
+    ConfirmarCambioCorreoRequest,
     LoginRequest,
     MensajeResponse,
+    PerfilResponse,
     ReenviarVerificacionRequest,
     RegisterRequest,
     RegisterResponse,
@@ -50,11 +59,13 @@ class AuthService:
         usuario_repo: IUsuarioRepository,
         token_repo: ITokenRepository,
         email_sender: IEmailSender,
+        cambio_correo_repo: ICambioCorreoRepository,
     ) -> None:
         self._clientes = cliente_repo
         self._usuarios = usuario_repo
         self._tokens = token_repo
         self._email = email_sender
+        self._cambios_correo = cambio_correo_repo
         self._settings = get_settings()
 
     # ── Registro ──────────────────────────────────────────────────────────────
@@ -268,6 +279,93 @@ class AuthService:
             raise UsuarioNoEncontradoError("Usuario no encontrado")
         return UsuarioActualResponse.model_validate(usuario)
 
+    # ── Gestion de perfil (CU-19) ─────────────────────────────────────────────
+
+    def ver_perfil(self, usuario_id: int) -> PerfilResponse:
+        usuario = self._usuarios.get_by_id(usuario_id)
+        if not usuario:
+            raise UsuarioNoEncontradoError("Usuario no encontrado")
+
+        cliente = usuario.cliente
+        return PerfilResponse(
+            nombre=cliente.nombre,
+            primer_apellido=cliente.primer_apellido,
+            segundo_apellido=cliente.segundo_apellido,
+            tipo_identificacion=cliente.tipo_identificacion,
+            numero_identificacion=cliente.numero_identificacion,
+            correo=usuario.correo,
+            telefono=cliente.telefono,
+        )
+
+    def actualizar_perfil(
+        self, usuario_id: int, data: ActualizarPerfilRequest
+    ) -> ActualizarPerfilResponse:
+        usuario = self._usuarios.get_by_id(usuario_id)
+        if not usuario:
+            raise UsuarioNoEncontradoError("Usuario no encontrado")
+
+        correo_cambio = data.correo != usuario.correo
+
+        # FE-02: el nuevo correo no debe pertenecer a otra cuenta. Se valida ANTES
+        # de escribir para no dejar cambios parciales si la transaccion se revierte.
+        if correo_cambio and self._usuarios.get_by_correo(data.correo):
+            raise CorreoYaRegistradoError("Este correo ya esta registrado")
+
+        # Nombre y telefono se actualizan de inmediato (CU-19 pasos 7 y 8).
+        self._clientes.update_datos(
+            usuario.cliente,
+            nombre=data.nombre,
+            primer_apellido=data.primer_apellido,
+            segundo_apellido=data.segundo_apellido,
+            telefono=data.telefono,
+        )
+
+        if not correo_cambio:
+            return ActualizarPerfilResponse(
+                mensaje="Datos actualizados con exito.",
+                correo_pendiente_confirmacion=False,
+            )
+
+        # El correo actual sigue ACTIVO hasta confirmar el enlace (CU-19 paso 8):
+        # se guarda el nuevo correo como pendiente y se envia el enlace de un solo uso.
+        token_str = generate_secure_token()
+        expira_en = self._ahora_utc() + timedelta(
+            hours=self._settings.email_change_token_hours
+        )
+        self._cambios_correo.create(usuario.id, data.correo, token_str, expira_en)
+        self._enviar_confirmacion_correo(data.correo, token_str)
+
+        return ActualizarPerfilResponse(
+            mensaje=(
+                "Hemos enviado un enlace de confirmacion a tu nuevo correo. "
+                "Tu correo actual seguira activo hasta que confirmes el cambio."
+            ),
+            correo_pendiente_confirmacion=True,
+        )
+
+    def confirmar_cambio_correo(
+        self, data: ConfirmarCambioCorreoRequest
+    ) -> MensajeResponse:
+        cambio = self._cambios_correo.get_valid(data.token)
+        if not cambio:
+            raise TokenInvalidoOExpiradoError(
+                "El enlace de confirmacion es invalido o ya expiro. Solicita el cambio nuevamente."
+            )
+
+        usuario = self._usuarios.get_by_id(cambio.usuario_id)
+        if not usuario:
+            raise UsuarioNoEncontradoError("Usuario no encontrado")
+
+        # Anti-carrera: el correo pudo registrarse entre la solicitud y la confirmacion.
+        existente = self._usuarios.get_by_correo(cambio.nuevo_correo)
+        if existente and existente.id != usuario.id:
+            raise CorreoYaRegistradoError("Este correo ya esta registrado")
+
+        self._cambios_correo.mark_used(cambio)
+        self._usuarios.update_correo(usuario, cambio.nuevo_correo)
+
+        return MensajeResponse(mensaje="Tu correo fue actualizado exitosamente.")
+
     # ── Helpers internos ──────────────────────────────────────────────────────
 
     def _ahora_utc(self) -> datetime:
@@ -297,6 +395,19 @@ class AuthService:
             " Si no lo solicitaste, ignora este correo.</small></p>"
         )
         self._enviar_correo_seguro(correo, "Recuperacion de contrasena — AgroMatina", cuerpo)
+
+    def _enviar_confirmacion_correo(self, correo: str, token: str) -> None:
+        link = f"{self._settings.frontend_url}/confirmar-correo?token={token}"
+        cuerpo = (
+            "<h2>Confirma tu nuevo correo — AgroMatina</h2>"
+            "<p>Recibiste este correo porque solicitaste cambiar el correo de tu cuenta.</p>"
+            "<p>Haz clic en el siguiente enlace para confirmar este nuevo correo:</p>"
+            f"<p><a href='{link}' style='color:#2d6a4f;font-weight:bold;'>"
+            f"Confirmar mi nuevo correo</a></p>"
+            f"<p><small>Este enlace expira en {self._settings.email_change_token_hours} horas."
+            " Si no solicitaste el cambio, ignora este correo.</small></p>"
+        )
+        self._enviar_correo_seguro(correo, "Confirma tu nuevo correo en AgroMatina", cuerpo)
 
     def _enviar_notificacion_cambio_contrasena(self, correo: str) -> None:
         # Hora de Costa Rica (UTC-6, sin horario de verano).

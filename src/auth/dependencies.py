@@ -10,6 +10,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from auth.repository import (
+    CambioCorreoRepository,
     ClienteRepository,
     TokenVerificacionRepository,
     UsuarioRepository,
@@ -45,6 +46,7 @@ def get_auth_service(
         usuario_repo=UsuarioRepository(db),
         token_repo=TokenVerificacionRepository(db),
         email_sender=email_sender,
+        cambio_correo_repo=CambioCorreoRepository(db),
     )
 
 
