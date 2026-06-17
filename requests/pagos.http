@@ -1,0 +1,32 @@
+### Pruebas del proceso de pago — AgroMatina
+### Usar con la extension "REST Client" de VS Code (clic en "Send Request" arriba de cada bloque).
+### Servidor: uvicorn main:app --reload  (desde la carpeta src/)
+
+@host = http://127.0.0.1:8000
+
+### 1) Checkout — seleccionar metodo de pago (SINPE)
+POST {{host}}/api/v1/pagos/checkout
+Content-Type: application/json
+
+{
+  "codigo_pedido": "ORD-2026-0002",
+  "metodo_pago": "sinpe"
+}
+
+### 2) Confirmar pago: genera el PDF, lo SUBE a Cloudinary, guarda la URL en la BD
+###    (pedidos.comprobante_pdf_url) y envia el comprobante por correo (PDF adjunto).
+### Requiere que el pedido EXISTA en la BD: 'codigo_pedido' = numero_orden real.
+### Con EMAIL_MODE=smtp envia correo real; con STORAGE_MODE=cloudinary sube a la nube.
+POST {{host}}/api/v1/pagos/confirmar
+Content-Type: application/json
+
+{
+  "codigo_pedido": "ORD-2026-0002",
+  "cliente_nombre": "Andres Araya",
+  "cliente_correo": "arayaagueroa@gmail.com",
+  "lineas": [
+    { "producto_nombre": "Pala de jardin",       "cantidad": 2, "precio_unitario": 3500 },
+    { "producto_nombre": "Saco de abono 25kg",    "cantidad": 1, "precio_unitario": 12500 },
+    { "producto_nombre": "Guantes de trabajo",    "cantidad": 3, "precio_unitario": 2200 }
+  ]
+}

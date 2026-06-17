@@ -1,9 +1,16 @@
 from functools import lru_cache
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Ruta ABSOLUTA al .env en la raiz del backend (este archivo: src/core/config.py,
+# por eso parents[2] = raiz del proyecto). Asi el .env se carga sin importar
+# desde que carpeta se levante el servidor (src/, raiz, etc.).
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_file_encoding="utf-8")
 
     # Base de datos
     database_url: str = "mysql+pymysql://root:password@localhost/agromatina_web"

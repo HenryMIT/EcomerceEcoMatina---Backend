@@ -24,7 +24,7 @@ from core.notifications import (
     WhatsAppCloudNotifier,
 )
 from core.security import decode_access_token
-from core.storage import CloudinaryStorage, IFileStorage, LocalFileStorage
+from core.storage import IFileStorage, build_file_storage
 from quote.repository import CotizacionRepository
 from quote.service import CotizacionService
 
@@ -33,15 +33,8 @@ oauth2_opcional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error
 
 
 def get_file_storage() -> IFileStorage:
-    """Strategy: elige el almacenamiento segun STORAGE_MODE."""
-    s = get_settings()
-    if s.storage_mode == "cloudinary":
-        return CloudinaryStorage(
-            cloud_name=s.cloudinary_cloud_name,
-            api_key=s.cloudinary_api_key,
-            api_secret=s.cloudinary_api_secret,
-        )
-    return LocalFileStorage(base_dir=s.local_storage_dir, base_url=s.local_storage_base_url)
+    """Dependencia FastAPI; la seleccion vive en core.storage.build_file_storage."""
+    return build_file_storage()
 
 
 def get_whatsapp_notifier() -> INotificadorWhatsApp:

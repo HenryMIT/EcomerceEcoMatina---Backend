@@ -56,17 +56,42 @@ class CloudinaryStorage:
     def guardar(self, contenido: bytes, nombre: str, content_type: str, carpeta: str) -> str:
         import cloudinary.uploader
 
+        resource_type = _RESOURCE_TYPE.get(content_type, "auto")
+        # Para recursos 'raw' (PDF, documentos) Cloudinary NO agrega la extension
+        # a la URL de entrega: la incluimos en el public_id para que el enlace
+        # termine en .pdf y el navegador lo abra como tal. Para imagenes basta el
+        # nombre sin extension (Cloudinary la deriva del formato).
+        public_id = Path(nombre).name if resource_type == "raw" else Path(nombre).stem
+
         resultado = cloudinary.uploader.upload(
             contenido,
             folder=carpeta,
-            resource_type=_RESOURCE_TYPE.get(content_type, "auto"),
-            public_id=Path(nombre).stem,
+            resource_type=resource_type,
+            public_id=public_id,
             use_filename=True,
-            unique_filename=True,
+            unique_filename=False,
         )
         url: str = resultado["secure_url"]
         logger.info("Archivo subido a Cloudinary: %s", url)
         return url
+
+
+def build_file_storage() -> "IFileStorage":
+    """
+    Strategy: elige el almacenamiento segun STORAGE_MODE. Unico lugar donde se
+    decide la implementacion concreta (cloudinary/local). En produccion sube a
+    Cloudinary; en desarrollo guarda en disco.
+    """
+    from core.config import get_settings
+
+    s = get_settings()
+    if s.storage_mode == "cloudinary":
+        return CloudinaryStorage(
+            cloud_name=s.cloudinary_cloud_name,
+            api_key=s.cloudinary_api_key,
+            api_secret=s.cloudinary_api_secret,
+        )
+    return LocalFileStorage(base_dir=s.local_storage_dir, base_url=s.local_storage_base_url)
 
 
 class LocalFileStorage:
