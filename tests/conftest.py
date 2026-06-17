@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 import auth.models  # noqa: F401  -- registra las tablas de auth en Base.metadata
 import product.models  # noqa: F401  -- registra las tablas del catalogo
 import quote.models  # noqa: F401  -- registra las tablas de cotizaciones
+import mis_facturas.models  # noqa: F401  -- registra pedidos/pedido_detalles/direccion
 from core.database import Base, get_db
 from main import app
 
