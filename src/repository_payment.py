@@ -5,7 +5,7 @@ router trabaje contra metodos con intencion, no contra la sesion directamente.
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models_payment import Pedido
+from mis_facturas.models import Pedido
 
 
 class PedidoRepository:
