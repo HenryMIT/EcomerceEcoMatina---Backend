@@ -8,7 +8,7 @@ Esto cumple el principio D de SOLID y permite sustituir implementaciones
 from datetime import datetime
 from typing import Optional, Protocol
 
-from auth.models import Cliente, TokenVerificacion, Usuario
+from auth.models import CambioCorreo, Cliente, TokenVerificacion, Usuario
 
 
 class IClienteRepository(Protocol):
@@ -24,6 +24,16 @@ class IClienteRepository(Protocol):
         numero_identificacion: str,
         telefono: str,
     ) -> Cliente:
+        ...
+
+    def update_datos(
+        self,
+        cliente: Cliente,
+        nombre: str,
+        primer_apellido: str,
+        segundo_apellido: Optional[str],
+        telefono: str,
+    ) -> None:
         ...
 
 
@@ -52,6 +62,9 @@ class IUsuarioRepository(Protocol):
     def update_ultimo_acceso(self, usuario: Usuario) -> None:
         ...
 
+    def update_correo(self, usuario: Usuario, correo: str) -> None:
+        ...
+
 
 class ITokenRepository(Protocol):
     def create(
@@ -67,4 +80,20 @@ class ITokenRepository(Protocol):
         ...
 
     def mark_used(self, token_obj: TokenVerificacion) -> None:
+        ...
+
+    def count_recientes(self, usuario_id: int, tipo: str, desde: datetime) -> int:
+        ...
+
+
+class ICambioCorreoRepository(Protocol):
+    def create(
+        self, usuario_id: int, nuevo_correo: str, token: str, expira_en: datetime
+    ) -> CambioCorreo:
+        ...
+
+    def get_valid(self, token: str) -> Optional[CambioCorreo]:
+        ...
+
+    def mark_used(self, cambio: CambioCorreo) -> None:
         ...

@@ -24,3 +24,7 @@ class ContrasenaActualIncorrectaError(Exception):
 
 class UsuarioNoEncontradoError(Exception):
     """No existe un usuario con el identificador dado."""
+
+
+class LimiteReenvioError(Exception):
+    """Se supero el limite de reenvios del correo de verificacion (CU-07 FE-03)."""

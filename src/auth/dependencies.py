@@ -10,15 +10,15 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from auth.repository import (
+    CambioCorreoRepository,
     ClienteRepository,
     TokenVerificacionRepository,
     UsuarioRepository,
 )
 from auth.schemas import UsuarioActualResponse
 from auth.service import AuthService
-from core.config import get_settings
 from core.database import get_db
-from core.email import ConsoleEmailSender, IEmailSender, SMTPEmailSender
+from core.email import IEmailSender, build_email_sender
 from core.exceptions import TokenError
 from core.security import decode_access_token
 
@@ -27,19 +27,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 def get_email_sender() -> IEmailSender:
     """
-    Estrategia (Strategy Pattern): selecciona el sender segun la variable EMAIL_MODE.
-    En desarrollo usa ConsoleEmailSender; en produccion usa SMTPEmailSender.
+    Dependencia FastAPI que entrega el sender de correo configurado.
+    La seleccion de implementacion (console/smtp) vive en core.email.build_email_sender.
     """
-    settings = get_settings()
-    if settings.email_mode == "smtp":
-        return SMTPEmailSender(
-            host=settings.smtp_host,
-            port=settings.smtp_port,
-            user=settings.smtp_user,
-            password=settings.smtp_password,
-            from_addr=settings.smtp_from,
-        )
-    return ConsoleEmailSender()
+    return build_email_sender()
 
 
 def get_auth_service(
@@ -55,6 +46,7 @@ def get_auth_service(
         usuario_repo=UsuarioRepository(db),
         token_repo=TokenVerificacionRepository(db),
         email_sender=email_sender,
+        cambio_correo_repo=CambioCorreoRepository(db),
     )
 
 

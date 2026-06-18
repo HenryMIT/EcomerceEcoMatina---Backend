@@ -12,6 +12,7 @@ from quote.router import router as quote_router
 from sync.router import router as sync_router
 from cart.router import router as cart_router
 from checkout.router import CheckoutRouter
+from mis_facturas.router import router as mis_facturas_router
 
 def create_app() -> FastAPI:
     settings = get_settings()
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(sync_router, prefix="/api/v1/sync", tags=["Sincronizacion"])
     app.include_router(cart_router, prefix="/api/v1", tags=["Carrito de Compras"])
     app.include_router(CheckoutRouter)
+    app.include_router(mis_facturas_router, prefix="/api/v1", tags=["Mis Facturas"])
 
     # En modo de almacenamiento local, servir los archivos subidos desde /media.
     # En modo cloudinary no se usa (los archivos viven en la nube).

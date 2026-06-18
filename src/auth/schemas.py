@@ -81,6 +81,31 @@ class SolicitarRecuperacionRequest(BaseModel):
     correo: EmailStr = Field(..., examples=["juan@example.com"])
 
 
+class ReenviarVerificacionRequest(BaseModel):
+    correo: EmailStr = Field(..., examples=["juan@example.com"])
+
+
+class ActualizarPerfilRequest(BaseModel):
+    """Datos editables del perfil (CU-19). La identificacion NO es editable."""
+
+    nombre: str = Field(..., min_length=1, max_length=50, examples=["Juan"])
+    primer_apellido: str = Field(..., min_length=1, max_length=50, examples=["Perez"])
+    segundo_apellido: Optional[str] = Field(None, max_length=50, examples=["Lopez"])
+    telefono: str = Field(..., min_length=8, max_length=15, examples=["88887777"])
+    correo: EmailStr = Field(..., examples=["juan@example.com"])
+
+    @field_validator("telefono")
+    @classmethod
+    def validar_telefono(cls, v: str) -> str:
+        if not re.match(r"^\+?[\d\s\-]{8,15}$", v):
+            raise ValueError("Formato de telefono invalido")
+        return v.strip()
+
+
+class ConfirmarCambioCorreoRequest(BaseModel):
+    token: str = Field(..., description="Token recibido en el nuevo correo (CU-19)")
+
+
 class ResetearContrasenaRequest(BaseModel):
     token: str = Field(..., description="Token recibido en el correo de recuperacion")
     clave_nueva: str = Field(..., min_length=8, max_length=100)
@@ -115,3 +140,21 @@ class UsuarioActualResponse(BaseModel):
     correo: str
     rol: str
     estado: str
+
+
+class PerfilResponse(BaseModel):
+    """Datos completos del perfil para 'Mi Perfil' (CU-19 paso 2)."""
+
+    nombre: str
+    primer_apellido: str
+    segundo_apellido: Optional[str] = None
+    tipo_identificacion: str
+    numero_identificacion: str
+    correo: str
+    telefono: str
+
+
+class ActualizarPerfilResponse(BaseModel):
+    mensaje: str
+    # True si el correo cambio y queda pendiente de confirmacion por enlace.
+    correo_pendiente_confirmacion: bool = False

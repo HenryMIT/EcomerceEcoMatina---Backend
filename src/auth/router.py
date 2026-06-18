@@ -14,10 +14,15 @@ from fastapi import APIRouter, Depends, status
 
 from auth.dependencies import get_auth_service, get_current_user
 from auth.schemas import (
+    ActualizarPerfilRequest,
+    ActualizarPerfilResponse,
     CambiarContrasenaRequest,
+    ConfirmarCambioCorreoRequest,
     LoginRequest,
     MensajeResponse,
+    PerfilResponse,
     RefreshRequest,
+    ReenviarVerificacionRequest,
     RegisterRequest,
     RegisterResponse,
     ResetearContrasenaRequest,
@@ -69,6 +74,23 @@ def verify_account(
     service: AuthService = Depends(get_auth_service),
 ) -> MensajeResponse:
     return service.verificar_cuenta(data.token)
+
+
+@router.post(
+    "/resend-verification",
+    response_model=MensajeResponse,
+    summary="Reenviar correo de verificacion (CU-07)",
+    description=(
+        "Reenvia el enlace de verificacion de cuenta. La respuesta es identica "
+        "exista o no el correo (anti-enumeracion). Limitado a 5 envios por hora; "
+        "al excederlo responde 429."
+    ),
+)
+def resend_verification(
+    data: ReenviarVerificacionRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> MensajeResponse:
+    return service.reenviar_verificacion(data)
 
 
 @router.post(
@@ -156,3 +178,46 @@ def get_me(
     current_user: UsuarioActualResponse = Depends(get_current_user),
 ) -> UsuarioActualResponse:
     return current_user
+
+
+@router.get(
+    "/profile",
+    response_model=PerfilResponse,
+    summary="Ver perfil completo (CU-19)",
+    description="Retorna los datos personales del cliente autenticado (Mi Perfil).",
+)
+def get_profile(
+    current_user: UsuarioActualResponse = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+) -> PerfilResponse:
+    return service.ver_perfil(current_user.id)
+
+
+@router.put(
+    "/profile",
+    response_model=ActualizarPerfilResponse,
+    summary="Editar perfil (CU-19)",
+    description=(
+        "Actualiza nombre y telefono de inmediato. Si cambia el correo, el actual "
+        "sigue activo y se envia un enlace de confirmacion al nuevo buzon."
+    ),
+)
+def update_profile(
+    data: ActualizarPerfilRequest,
+    current_user: UsuarioActualResponse = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+) -> ActualizarPerfilResponse:
+    return service.actualizar_perfil(current_user.id, data)
+
+
+@router.post(
+    "/confirm-email-change",
+    response_model=MensajeResponse,
+    summary="Confirmar cambio de correo (CU-19)",
+    description="Valida el token enviado al nuevo correo y lo establece como correo de la cuenta.",
+)
+def confirm_email_change(
+    data: ConfirmarCambioCorreoRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> MensajeResponse:
+    return service.confirmar_cambio_correo(data)

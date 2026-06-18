@@ -1,0 +1,143 @@
+### Pruebas de Autenticacion y Perfil — AgroMatina
+### Usar con la extension "REST Client" de VS Code (clic en "Send Request").
+### Servidor:  cd src ; uvicorn main:app --reload
+###
+### FLUJO SUGERIDO:
+###   1) Register -> 2) (verificar con el token del correo) -> 3) Login
+###   El Login captura el access_token y lo reutilizan los endpoints protegidos.
+
+@host = http://127.0.0.1:8000
+@correo = juan.prueba@example.com
+@clave = MiClave123
+
+### ─────────────────────────────────────────────────────────────────────────────
+### CU-06  Registrar cuenta
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "nombre": "Juan",
+  "primer_apellido": "Perez",
+  "segundo_apellido": "Lopez",
+  "tipo_identificacion": "cedula",
+  "numero_identificacion": "112345678",
+  "telefono": "88887777",
+  "correo": "{{correo}}",
+  "clave": "{{clave}}"
+}
+
+### CU-07  Verificar cuenta (pega el token recibido en el correo/consola)
+POST {{host}}/api/v1/auth/verify-account
+Content-Type: application/json
+
+{
+  "token": "PEGA_AQUI_EL_TOKEN_DE_VERIFICACION"
+}
+
+### CU-07  Reenviar correo de verificacion  (limite 5/hora -> 429 al exceder)
+POST {{host}}/api/v1/auth/resend-verification
+Content-Type: application/json
+
+{
+  "correo": "{{correo}}"
+}
+
+### ─────────────────────────────────────────────────────────────────────────────
+### CU-08  Login  — captura el access_token para los endpoints protegidos
+# @name login
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "correo": "{{correo}}",
+  "clave": "{{clave}}"
+}
+
+###  token tomado de la respuesta del login anterior
+@token = {{login.response.body.access_token}}
+
+### GET perfil basico del token activo
+GET {{host}}/api/v1/auth/me
+Authorization: Bearer {{token}}
+
+### ─────────────────────────────────────────────────────────────────────────────
+### CU-19  Ver perfil completo  [protegido]
+GET {{host}}/api/v1/auth/profile
+Authorization: Bearer {{token}}
+
+### CU-19  Editar perfil SIN cambiar correo (nombre/telefono inmediatos)
+PUT {{host}}/api/v1/auth/profile
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Juan Carlos",
+  "primer_apellido": "Perez",
+  "segundo_apellido": "Lopez",
+  "telefono": "88886666",
+  "correo": "{{correo}}"
+}
+
+### CU-19  Editar perfil CAMBIANDO el correo
+###   -> el correo actual sigue activo; llega un enlace al nuevo buzon
+PUT {{host}}/api/v1/auth/profile
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Juan Carlos",
+  "primer_apellido": "Perez",
+  "segundo_apellido": "Lopez",
+  "telefono": "88886666",
+  "correo": "juan.nuevo@example.com"
+}
+
+### CU-19  Confirmar el cambio de correo (pega el token del nuevo correo)
+POST {{host}}/api/v1/auth/confirm-email-change
+Content-Type: application/json
+
+{
+  "token": "PEGA_AQUI_EL_TOKEN_DEL_NUEVO_CORREO"
+}
+
+### ─────────────────────────────────────────────────────────────────────────────
+### CU-11  Cambiar contrasena  [protegido]  — envia correo de notificacion
+POST {{host}}/api/v1/auth/change-password
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "clave_actual": "{{clave}}",
+  "clave_nueva": "NuevaClave456"
+}
+
+### ─────────────────────────────────────────────────────────────────────────────
+### CU-10  Solicitar recuperacion de contrasena (respuesta anti-enumeracion)
+POST {{host}}/api/v1/auth/forgot-password
+Content-Type: application/json
+
+{
+  "correo": "{{correo}}"
+}
+
+### CU-10  Restablecer contrasena con el token del correo
+POST {{host}}/api/v1/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "PEGA_AQUI_EL_TOKEN_DE_RECUPERACION",
+  "clave_nueva": "OtraClave789"
+}
+
+### ─────────────────────────────────────────────────────────────────────────────
+### Refrescar tokens (rota el refresh token)
+POST {{host}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "{{login.response.body.refresh_token}}"
+}
+
+### CU-09  Cerrar sesion  [protegido]
+POST {{host}}/api/v1/auth/logout
+Authorization: Bearer {{token}}

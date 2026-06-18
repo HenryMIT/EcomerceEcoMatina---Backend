@@ -3,6 +3,10 @@ from checkout.repository import CheckoutRepository
 from checkout.schemas import PedidoCreate, PedidoOut
 # Ajusta la ruta de importación de tu CartService según tu proyecto
 from cart.service import CarritoService 
+from decimal import Decimal
+from fastapi import Response
+from checkout.schemas import LineaFactura
+from checkout.factura_pdf import generar_factura_pdf
 
 class CheckoutService:
     def __init__(self, db: AsyncSession):
@@ -53,4 +57,42 @@ class CheckoutService:
             total=pedido_guardado.total,
             mensaje=mensaje_salida,
             detalles_pago=detalles_pago
+        )
+    
+    async def descargar_pdf_comprobante(self, codigo_pedido: str) -> Response:
+        pedido = await self.repo.obtener_por_codigo(codigo_pedido)
+        if not pedido:
+            raise ValueError("El pedido no existe.")
+
+        # Mapeamos las líneas de la base de datos al formato del PDF
+        lineas_pdf = []
+        for linea in pedido.lineas:
+            lineas_pdf.append(LineaFactura(
+                # NOTA: Aquí ponemos un nombre genérico. Más adelante, cuando unas la 
+                # tabla de productos, pondrás linea.producto.nombre real.
+                producto_nombre=f"Producto SKU-{linea.producto_id}", 
+                cantidad=float(linea.cantidad),
+                precio_unitario=Decimal(str(linea.precio_unitario)),
+                subtotal=Decimal(str(linea.precio_unitario * linea.cantidad))
+            ))
+
+        # NOTA: Igual que arriba, cuando conectes tu tabla clientes, 
+        # reemplazarás estos strings fijos por pedido.usuario.cliente.nombre
+        cliente_nombre = "Cliente AgroMatina" 
+        cliente_correo = "cliente@correo.com"
+
+        # Generamos los bytes del PDF
+        pdf_bytes = generar_factura_pdf(
+            codigo_pedido=pedido.codigo_pedido,
+            cliente_nombre=cliente_nombre,
+            cliente_correo=cliente_correo,
+            lineas=lineas_pdf,
+            total=Decimal(str(pedido.total))
+        )
+
+        # Devolvemos un archivo directamente al navegador
+        return Response(
+            content=pdf_bytes, 
+            media_type="application/pdf", 
+            headers={"Content-Disposition": f"attachment; filename=comprobante_{codigo_pedido}.pdf"}
         )

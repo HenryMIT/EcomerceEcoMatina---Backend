@@ -95,9 +95,26 @@ CREATE TABLE tokens_verificacion (
 	created_at  DATETIME DEFAULT (NOW()), 
 	KEY ix_tokens_usuario (usuario_id), 
 	KEY ix_tokens_token (token), 
-	CONSTRAINT fk_tokens_usuario 
-	FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE 
-) ENGINE=InnoDB; 
+	CONSTRAINT fk_tokens_usuario
+	FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Solicitudes de cambio de correo del perfil (CU-19, RF-41). Tabla separada de
+-- tokens_verificacion porque ademas del token guarda el NUEVO correo pendiente:
+-- el correo actual sigue activo hasta que el cliente confirma el enlace.
+CREATE TABLE cambios_correo (
+	id INT PRIMARY KEY AUTO_INCREMENT,
+	usuario_id INT NOT NULL,
+	nuevo_correo VARCHAR(255) NOT NULL,
+	token VARCHAR(255) NOT NULL,
+	expira_en DATETIME NOT NULL,
+	usado TINYINT(1) NOT NULL DEFAULT 0,
+	created_at DATETIME DEFAULT (NOW()),
+	KEY ix_cambios_correo_usuario (usuario_id),
+	KEY ix_cambios_correo_token (token),
+	CONSTRAINT fk_cambios_correo_usuario
+	FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
 -- ============================================================ 
 -- 3) PEDIDOS WEB (la "orden" del cliente en la tienda) 

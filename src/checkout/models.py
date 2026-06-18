@@ -21,6 +21,7 @@ class Pedido(Base):
     
     total = Column(Float, nullable=False)
     metodo_pago = Column(String(30), nullable=False) 
+    comprobante_pdf_url = Column(String(255), nullable=True)
     estado = Column(Enum(EstadoPedido), default=EstadoPedido.PENDIENTE_VALIDACION, nullable=False)
     fecha_creacion = Column(DateTime, default=datetime.utcnow, nullable=False)
 

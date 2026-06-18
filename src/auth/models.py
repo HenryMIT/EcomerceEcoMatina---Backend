@@ -69,3 +69,25 @@ class TokenVerificacion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     usuario: Mapped["Usuario"] = relationship("Usuario", back_populates="tokens")
+
+
+class CambioCorreo(Base):
+    """
+    Solicitud de cambio de correo del perfil (CU-19, RF-41).
+
+    Tabla SEPARADA de tokens_verificacion porque ademas del token debe guardar
+    el nuevo correo pendiente: el correo actual sigue activo hasta que el cliente
+    confirma el enlace de un solo uso enviado al nuevo buzon.
+    """
+
+    __tablename__ = "cambios_correo"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    usuario_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False
+    )
+    nuevo_correo: Mapped[str] = mapped_column(String(255), nullable=False)
+    token: Mapped[str] = mapped_column(String(255), nullable=False)
+    expira_en: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    usado: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

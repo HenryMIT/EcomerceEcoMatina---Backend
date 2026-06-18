@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from checkout.models import EstadoPedido
+from decimal import Decimal
 
 class PedidoCreate(BaseModel):
     # Ya no pedimos items ni total al frontend por seguridad. Solo quién compra y cómo.
@@ -15,3 +16,9 @@ class PedidoOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class LineaFactura(BaseModel):
+    producto_nombre: str
+    cantidad: float
+    precio_unitario: Decimal
+    subtotal: Decimal

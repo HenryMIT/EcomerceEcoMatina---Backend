@@ -20,6 +20,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         TokenInvalidoOExpiradoError,
         ContrasenaActualIncorrectaError,
         UsuarioNoEncontradoError,
+        LimiteReenvioError,
     )
     from product.exceptions import (
         CategoriaNoEncontradaError,
@@ -57,6 +58,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(UsuarioNoEncontradoError)
     async def _(request: Request, exc: UsuarioNoEncontradoError):  # noqa: F811
         return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(LimiteReenvioError)
+    async def _(request: Request, exc: LimiteReenvioError):  # noqa: F811
+        return JSONResponse(status_code=429, content={"detail": str(exc)})
 
     @app.exception_handler(CategoriaNoEncontradaError)
     async def _(request: Request, exc: CategoriaNoEncontradaError):  # noqa: F811
