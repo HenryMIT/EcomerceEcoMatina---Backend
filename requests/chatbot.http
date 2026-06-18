@@ -1,0 +1,41 @@
+### Pruebas del Chatbot asistente virtual (CU-18) — AgroMatina
+### Requiere: GEMINI_API_KEY en el .env (https://aistudio.google.com/apikey)
+### Servidor:  cd src ; uvicorn main:app --reload
+
+@host = http://127.0.0.1:8000
+
+### 1) Pregunta por un producto (el bot decide buscar en la BD)
+POST {{host}}/api/v1/chatbot/mensaje
+Content-Type: application/json
+
+{
+  "mensaje": "¿Tienen palas?"
+}
+
+### 2) Pregunta por categorías
+POST {{host}}/api/v1/chatbot/mensaje
+Content-Type: application/json
+
+{
+  "mensaje": "¿Qué categorías de productos tienen?"
+}
+
+### 3) Conversación con historial (el bot recuerda el contexto previo)
+POST {{host}}/api/v1/chatbot/mensaje
+Content-Type: application/json
+
+{
+  "mensaje": "¿Cuánto cuesta el primero?",
+  "historial": [
+    { "rol": "user", "texto": "¿Tienen abono?" },
+    { "rol": "assistant", "texto": "Sí, tenemos Saco de abono 25kg a ₡12.500." }
+  ]
+}
+
+### 4) Pregunta fuera de catálogo (debería ofrecer hablar por WhatsApp)
+POST {{host}}/api/v1/chatbot/mensaje
+Content-Type: application/json
+
+{
+  "mensaje": "¿A qué hora abren los domingos?"
+}

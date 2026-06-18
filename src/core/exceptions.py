@@ -30,6 +30,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         ArchivoInvalidoError,
         DemasiadosArchivosError,
     )
+    from chatbot.exceptions import ChatbotError
 
     @app.exception_handler(CredencialesInvalidasError)
     async def _(request: Request, exc: CredencialesInvalidasError):
@@ -78,3 +79,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(DemasiadosArchivosError)
     async def _(request: Request, exc: DemasiadosArchivosError):  # noqa: F811
         return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(ChatbotError)
+    async def _(request: Request, exc: ChatbotError):  # noqa: F811
+        return JSONResponse(status_code=503, content={"detail": str(exc)})

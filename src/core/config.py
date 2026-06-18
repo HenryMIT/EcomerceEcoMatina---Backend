@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     # (RN-02): es autenticacion maquina-a-maquina. Cambiar SIEMPRE en produccion.
     sync_api_key: str = "cambia-esta-api-key-de-sync-en-produccion"
 
+    # Chatbot asistente virtual (CU-18). El modelo vive detras de IChatModel:
+    # chat_model_mode selecciona el proveedor (gemini hoy; claude/ollama a futuro).
+    chat_model_mode: str = "gemini"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+
     debug: bool = False
 
 
