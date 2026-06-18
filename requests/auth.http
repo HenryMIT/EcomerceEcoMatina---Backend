@@ -31,7 +31,7 @@ POST {{host}}/api/v1/auth/verify-account
 Content-Type: application/json
 
 {
-  "token": "PEGA_AQUI_EL_TOKEN_DE_VERIFICACION"
+  "token": "d4TPSs-3UR2VkzfEhi3tx8dupbSTshrrZ0UqrVvSMsg"
 }
 
 ### CU-07  Reenviar correo de verificacion  (limite 5/hora -> 429 al exceder)
