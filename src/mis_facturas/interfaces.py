@@ -7,7 +7,8 @@ sin tocar la logica de negocio.
 """
 from typing import Protocol
 
-from mis_facturas.models import Direccion, Pedido
+from mis_facturas.models import Direccion
+from checkout.models import Pedido
 
 
 class IFacturaRepositorio(Protocol):

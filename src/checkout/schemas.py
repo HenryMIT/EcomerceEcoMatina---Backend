@@ -1,16 +1,23 @@
+from typing import List
 from pydantic import BaseModel, Field
-from checkout.models import EstadoPedido
 from decimal import Decimal
+from checkout.models import EstadoPedido
+
+class ItemCheckout(BaseModel):
+    producto_codigo: str
+    producto_nombre: str
+    cantidad: float
+    precio_unitario: float
 
 class PedidoCreate(BaseModel):
-    # Ya no pedimos items ni total al frontend por seguridad. Solo quién compra y cómo.
-    usuario_id: int
+    cliente_id: int
     metodo_pago: str = Field(..., pattern="^(sinpe|paypal)$")
+    items: List[ItemCheckout]
 
 class PedidoOut(BaseModel):
-    codigo_pedido: str
+    numero_orden: str
     estado: EstadoPedido
-    total: float
+    total: Decimal
     mensaje: str
     detalles_pago: dict
 

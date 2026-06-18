@@ -1,55 +1,53 @@
 import uuid
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from decimal import Decimal
+from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import select
 
-from checkout.models import Pedido, LineaPedido, EstadoPedido
+from checkout.models import Pedido, PedidoDetalle, EstadoPedido
 from checkout.schemas import PedidoCreate
 
 class CheckoutRepository:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: Session):
         self.db = db
 
-    async def crear_pedido(self, datos: PedidoCreate, items_carrito: list, total_calculado: float) -> Pedido:
+    def crear_pedido(self, datos: PedidoCreate, items_carrito: list, total_calculado: float) -> Pedido:
         codigo_unico = f"AM-{uuid.uuid4().hex[:8].upper()}"
         
         nuevo_pedido = Pedido(
-            codigo_pedido=codigo_unico,
-            usuario_id=datos.usuario_id,
-            total=total_calculado,
+            numero_orden=codigo_unico,
+            cliente_id=datos.cliente_id,
+            total=Decimal(str(total_calculado)),
             metodo_pago=datos.metodo_pago,
             estado=EstadoPedido.PENDIENTE_VALIDACION 
         )
         
         self.db.add(nuevo_pedido)
-        await self.db.flush() 
+        self.db.flush()  # Sin await
 
         for item in items_carrito:
-            linea = LineaPedido(
+            detalle = PedidoDetalle(
                 pedido_id=nuevo_pedido.id,
-                producto_id=item.producto_id,
-                cantidad=item.cantidad,
-                precio_unitario=item.precio_unitario 
+                producto_codigo=item.producto_codigo, 
+                producto_nombre=item.producto_nombre, 
+                cantidad=Decimal(str(item.cantidad)),
+                precio_unitario=Decimal(str(item.precio_unitario)),
+                subtotal=Decimal(str(item.cantidad * item.precio_unitario))
             )
-            self.db.add(linea)
+            self.db.add(detalle)
 
-        await self.db.commit()
-        await self.db.refresh(nuevo_pedido)
+        self.db.commit()  # Sin await
+        self.db.refresh(nuevo_pedido)  # Sin await
         return nuevo_pedido
 
-    async def obtener_por_codigo(self, codigo_pedido: str) -> Pedido | None:
-        """Busca el pedido y carga sus líneas usando el código único."""
-        result = await self.db.execute(
+    def obtener_por_codigo(self, numero_orden: str) -> Pedido | None:
+        return self.db.execute(
             select(Pedido)
-            .where(Pedido.codigo_pedido == codigo_pedido)
-            .options(selectinload(Pedido.lineas))
-        )
-        return result.scalars().first()
+            .where(Pedido.numero_orden == numero_orden)
+            .options(selectinload(Pedido.detalles), selectinload(Pedido.cliente))
+        ).scalars().first()
 
-    async def set_comprobante_url(self, pedido: Pedido, url: str) -> None:
-        """Guarda el link de Cloudinary del comprobante y marca el pedido confirmado."""
+    def set_comprobante_url(self, pedido: Pedido, url: str) -> None:
         pedido.comprobante_pdf_url = url
         pedido.estado = EstadoPedido.CONFIRMADO
-        # En el entorno asíncrono, usamos commit para fijar el cambio en la BD
-        await self.db.commit()
-        await self.db.refresh(pedido)
+        self.db.commit()
+        self.db.refresh(pedido)
