@@ -8,7 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from auth.models import Usuario
-from mis_facturas.models import Direccion, Pedido
+from mis_facturas.models import Direccion
+# 🔗 Conexión arquitectónica: Importamos el Pedido oficial desde tu módulo de checkout
+from checkout.models import Pedido
 
 
 class FacturaRepositorio:

@@ -10,7 +10,7 @@ from mis_facturas.exceptions import (
     FacturaPdfNoDisponibleError,
 )
 from mis_facturas.interfaces import IFacturaRepositorio
-from mis_facturas.models import Pedido
+from checkout.models import Pedido
 from mis_facturas.schemas import (
     ClienteFacturaResponse,
     DetalleProductoResponse,

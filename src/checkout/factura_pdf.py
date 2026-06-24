@@ -10,10 +10,8 @@ en vez del simbolo de colon (no representable en latin-1).
 """
 from datetime import datetime
 from decimal import Decimal
-
 from fpdf import FPDF
-
-from schemas_payment import LineaFactura
+from checkout.schemas import LineaFactura
 
 EMPRESA = "AgroMatina Ferreteria"
 

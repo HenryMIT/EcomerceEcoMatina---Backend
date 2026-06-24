@@ -22,7 +22,10 @@ from auth.models import Cliente, Usuario
 from auth.schemas import UsuarioActualResponse
 from main import app
 from mis_facturas.interfaces import IFacturaRepositorio
-from mis_facturas.models import Direccion, Pedido, PedidoDetalle
+from mis_facturas.models import Direccion
+# Pedido/PedidoDetalle viven en el modulo de checkout (mis_facturas los reutiliza,
+# no los redefine: una sola clase por tabla en el registry de SQLAlchemy).
+from checkout.models import Pedido, PedidoDetalle
 from mis_facturas.service import FacturaService
 
 
