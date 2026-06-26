@@ -75,6 +75,21 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
 
+    # Pasarela de pago PayPal (checkout). paypal_mode selecciona el entorno:
+    # "mock" no llama a PayPal (desarrollo/tests); "sandbox" usa el API de pruebas;
+    # "live" usa produccion. Cada entorno tiene su propio par de credenciales.
+    paypal_mode: str = "mock"
+    paypal_currency: str = "USD"
+    # Credenciales de SANDBOX (pruebas)
+    paypal_sandbox_client_id: str = ""
+    paypal_sandbox_client_secret: str = ""
+    # Credenciales de PRODUCCION (live) — cambiar SIEMPRE antes de cobrar real
+    paypal_client_id: str = ""
+    paypal_client_secret: str = ""
+    # A donde vuelve el comprador tras aprobar/cancelar el pago en PayPal
+    paypal_return_url: str = "http://localhost:5173/checkout/paypal/return"
+    paypal_cancel_url: str = "http://localhost:5173/checkout/paypal/cancel"
+
     debug: bool = False
 
 

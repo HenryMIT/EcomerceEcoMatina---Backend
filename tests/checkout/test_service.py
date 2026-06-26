@@ -50,3 +50,30 @@ def test_paypal_genera_url_de_pasarela_con_la_orden(db_session, seed_cliente):
     out = CheckoutService(db_session).procesar_checkout(_datos(metodo="paypal"))
     assert out.detalles_pago["accion"] == "PAYMENT_GATEWAY_REDIRECT"
     assert out.numero_orden in out.detalles_pago["url_pasarela"]
+
+
+def test_metodo_no_soportado_lanza_value_error(db_session, seed_cliente):
+    # El servicio no conoce "tarjeta": al no estar en el mapa de estrategias, falla
+    # limpiamente en vez de registrar un pedido sin forma de cobrarlo.
+    servicio = CheckoutService(db_session, metodos_pago={})
+    datos = _datos(metodo="sinpe")
+    datos.metodo_pago = "tarjeta"
+    with pytest.raises(ValueError, match="no soportado"):
+        servicio.procesar_checkout(datos)
+
+
+def test_se_puede_agregar_un_metodo_sin_tocar_el_servicio(db_session, seed_cliente):
+    # OCP: una estrategia nueva se inyecta y el servicio la usa tal cual, sin
+    # modificar CheckoutService ni el registro de metodos existente.
+    from checkout.interfaces import ResultadoPago
+
+    class TarjetaFake:
+        def procesar(self, pedido):
+            return ResultadoPago(mensaje="Tarjeta OK", detalles={"accion": "CARD"})
+
+    servicio = CheckoutService(db_session, metodos_pago={"tarjeta": TarjetaFake()})
+    datos = _datos(metodo="sinpe")
+    datos.metodo_pago = "tarjeta"
+    out = servicio.procesar_checkout(datos)
+    assert out.mensaje == "Tarjeta OK"
+    assert out.detalles_pago["accion"] == "CARD"
