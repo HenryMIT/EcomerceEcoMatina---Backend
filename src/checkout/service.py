@@ -2,46 +2,40 @@ from decimal import Decimal
 from fastapi import Response
 from sqlalchemy.orm import Session
 
+from checkout.interfaces import IMetodoPago
+from checkout.payments import build_metodos_pago
 from checkout.repository import CheckoutRepository
 from checkout.schemas import PedidoCreate, PedidoOut, LineaFactura
 from checkout.factura_pdf import generar_factura_pdf
+from core.config import get_settings
 
 class CheckoutService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, metodos_pago: dict[str, IMetodoPago] | None = None):
         self.repo = CheckoutRepository(db)
+        # Mapa nombre -> estrategia de cobro. Se inyecta (tests) o se arma desde la
+        # configuracion. El servicio NO conoce las pasarelas concretas: solo delega.
+        self._metodos_pago = metodos_pago or build_metodos_pago(get_settings())
 
     def procesar_checkout(self, datos: PedidoCreate) -> PedidoOut:
         if not datos.items:
             raise ValueError("No se puede procesar el pago: El carrito está vacío.")
 
+        metodo = self._metodos_pago.get(datos.metodo_pago)
+        if metodo is None:
+            raise ValueError(f"Método de pago no soportado: {datos.metodo_pago}")
+
         total_calculado = sum(item.precio_unitario * item.cantidad for item in datos.items)
 
         pedido_guardado = self.repo.crear_pedido(datos, datos.items, total_calculado)
 
-        detalles_pago = {}
-        mensaje_salida = ""
-
-        if datos.metodo_pago == "sinpe":
-            mensaje_salida = "Pedido registrado. Pendiente de verificación."
-            detalles_pago = {
-                "accion": "WHATSAPP_REDIRECT",
-                "instrucciones": "Realice el SINPE Móvil y envíe el comprobante por WhatsApp indicando su orden.",
-                "numero_orden_referencia": pedido_guardado.numero_orden
-            }
-        elif datos.metodo_pago == "paypal":
-            detalles_pago = {
-                "accion": "PAYMENT_GATEWAY_REDIRECT",
-                "url_pasarela": f"https://www.sandbox.paypal.com/checkoutnow?token=MOCK_{pedido_guardado.numero_orden}",
-                "numero_orden_referencia": pedido_guardado.numero_orden
-            }
-            mensaje_salida = "Sesión de PayPal creada."
+        resultado = metodo.procesar(pedido_guardado)
 
         return PedidoOut(
             numero_orden=pedido_guardado.numero_orden,
             estado=pedido_guardado.estado,
             total=pedido_guardado.total,
-            mensaje=mensaje_salida,
-            detalles_pago=detalles_pago
+            mensaje=resultado.mensaje,
+            detalles_pago=resultado.detalles
         )
 
     def descargar_pdf_comprobante(self, numero_orden: str) -> Response:
