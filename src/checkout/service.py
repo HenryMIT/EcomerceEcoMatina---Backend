@@ -12,6 +12,7 @@ from checkout.schemas import PedidoCreate, PedidoOut, LineaFactura
 from checkout.factura_pdf import generar_factura_pdf
 from core.config import get_settings
 from core.email import EmailAttachment, IEmailSender, build_email_sender
+from core.storage import IFileStorage, build_file_storage
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ class CheckoutService:
         metodos_pago: dict[str, IMetodoPago] | None = None,
         paypal_gateway: PaypalGateway | None = None,
         email_sender: IEmailSender | None = None,
+        storage: IFileStorage | None = None,
     ):
         self.repo = CheckoutRepository(db)
         self._settings = get_settings()
@@ -35,6 +37,9 @@ class CheckoutService:
         # produccion se construye al vuelo con el remitente del flujo (ver
         # _enviar_comprobante_por_correo). None => se arma con build_email_sender.
         self._email_sender = email_sender
+        # Almacenamiento del comprobante PDF (Cloudinary). Se inyecta en tests;
+        # None => se arma con build_file_storage segun STORAGE_MODE.
+        self._storage = storage
 
     def procesar_checkout(self, datos: PedidoCreate) -> PedidoOut:
         if not datos.items:
@@ -71,6 +76,11 @@ class CheckoutService:
             raise ValueError("El pedido asociado al pago no existe.")
 
         self.repo.confirmar_pago(pedido)
+
+        # Sube el comprobante PDF a Cloudinary y guarda su URL en el pedido
+        # (comprobante_pdf_url). El pedido ya quedo confirmado: un fallo de
+        # almacenamiento se registra pero NO revierte el cobro.
+        self._guardar_comprobante_en_storage(pedido)
 
         # Comprobante de pago por correo. El pedido ya quedo confirmado: un fallo
         # de correo no debe revertir el cobro, por eso _enviar_comprobante_por_correo
@@ -112,7 +122,10 @@ class CheckoutService:
 
         cliente = pedido.cliente
         nombre_cliente = cliente.nombre if cliente else "Cliente AgroMatina"
-        correo_cliente = cliente.correo if cliente else "cliente@correo.com"
+        # El correo vive en Usuario (no en Cliente): se accede via la relacion 1:1.
+        correo_cliente = (
+            cliente.usuario.correo if cliente and cliente.usuario else "cliente@correo.com"
+        )
 
         return generar_factura_pdf(
             codigo_pedido=pedido.numero_orden,
@@ -121,6 +134,31 @@ class CheckoutService:
             lineas=lineas_pdf,
             total=pedido.total,
         )
+
+    def _guardar_comprobante_en_storage(self, pedido: Pedido) -> None:
+        """
+        Genera el comprobante PDF, lo sube al almacenamiento (Cloudinary) y guarda
+        su URL en el pedido (`comprobante_pdf_url`), de donde la lee "Mis facturas".
+
+        Un fallo de subida se registra pero NO se propaga: el pago ya fue capturado
+        y el pedido confirmado, no debe revertirse por el almacenamiento.
+        """
+        try:
+            pdf_bytes = self._generar_pdf_pedido(pedido)
+            storage = self._storage or build_file_storage()
+            url = storage.guardar(
+                contenido=pdf_bytes,
+                nombre=f"comprobante_{pedido.numero_orden}.pdf",
+                content_type="application/pdf",
+                carpeta="comprobantes",
+            )
+            self.repo.set_comprobante_url(pedido, url)
+        except Exception as exc:
+            logger.error(
+                "Error al subir el comprobante del pedido %s al almacenamiento: %s",
+                pedido.numero_orden,
+                exc,
+            )
 
     def _enviar_comprobante_por_correo(self, pedido: Pedido) -> None:
         """
