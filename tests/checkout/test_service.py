@@ -52,6 +52,23 @@ def test_paypal_genera_url_de_pasarela_con_la_orden(db_session, seed_cliente):
     assert out.numero_orden in out.detalles_pago["url_pasarela"]
 
 
+def test_capturar_pago_paypal_confirma_el_pedido(db_session, seed_cliente):
+    # En modo mock el token de PayPal es MOCK_<numero_orden>; capturar confirma el pedido.
+    servicio = CheckoutService(db_session)
+    creado = servicio.procesar_checkout(_datos(metodo="paypal"))
+    assert creado.estado == EstadoPedido.PENDIENTE_VALIDACION
+
+    confirmado = servicio.capturar_pago_paypal(f"MOCK_{creado.numero_orden}")
+    assert confirmado.numero_orden == creado.numero_orden
+    assert confirmado.estado == EstadoPedido.CONFIRMADO
+
+
+def test_capturar_pago_de_pedido_inexistente_lanza_value_error(db_session, seed_cliente):
+    servicio = CheckoutService(db_session)
+    with pytest.raises(ValueError, match="no existe"):
+        servicio.capturar_pago_paypal("MOCK_AM-NOEXISTE")
+
+
 def test_metodo_no_soportado_lanza_value_error(db_session, seed_cliente):
     # El servicio no conoce "tarjeta": al no estar en el mapa de estrategias, falla
     # limpiamente en vez de registrar un pedido sin forma de cobrarlo.

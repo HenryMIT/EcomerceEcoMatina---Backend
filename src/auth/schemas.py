@@ -137,6 +137,9 @@ class UsuarioActualResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     id: int
+    # Id del cliente asociado (FK clientes.id, 1:1 con el usuario). Lo necesita el
+    # checkout (POST /checkout/). Se completa solo desde el ORM (from_attributes).
+    cliente_id: int
     correo: str
     rol: str
     estado: str

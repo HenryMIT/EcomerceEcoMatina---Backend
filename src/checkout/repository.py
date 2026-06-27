@@ -51,3 +51,9 @@ class CheckoutRepository:
         pedido.estado = EstadoPedido.CONFIRMADO
         self.db.commit()
         self.db.refresh(pedido)
+
+    def confirmar_pago(self, pedido: Pedido) -> None:
+        """Marca el pedido como confirmado tras capturar el pago (PayPal)."""
+        pedido.estado = EstadoPedido.CONFIRMADO
+        self.db.commit()
+        self.db.refresh(pedido)

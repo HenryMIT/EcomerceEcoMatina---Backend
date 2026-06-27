@@ -40,6 +40,7 @@ from main import create_app
 
 USUARIO_ACTUAL = UsuarioActualResponse(
     id=10,
+    cliente_id=5,
     correo="juan@test.com",
     rol="cliente",
     estado="verificada",

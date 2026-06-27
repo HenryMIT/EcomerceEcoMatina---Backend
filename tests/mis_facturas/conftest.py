@@ -156,6 +156,7 @@ def seed(db_session: Session) -> SimpleNamespace:
 
     return SimpleNamespace(
         usuario_ana_id=10,
+        cliente_ana_id=1,
         correo_ana="ana.rojas@example.com",
         orden_pdf="ORD-0001",
         orden_sin_pdf="ORD-0003",
@@ -168,6 +169,7 @@ def auth_client(client: TestClient, seed: SimpleNamespace) -> Iterator[TestClien
     """TestClient autenticado como Ana (cliente 1) via override de get_current_user."""
     app.dependency_overrides[get_current_user] = lambda: UsuarioActualResponse(
         id=seed.usuario_ana_id,
+        cliente_id=seed.cliente_ana_id,
         correo=seed.correo_ana,
         rol="cliente",
         estado="verificada",
