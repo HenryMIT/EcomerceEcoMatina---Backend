@@ -60,14 +60,35 @@ class _FakeEmailSender:
         )
 
 
-def _servicio_paypal_fake(db, email_sender=None) -> CheckoutService:
-    """CheckoutService con la estrategia y la captura de PayPal apuntando al doble."""
+class _FakeStorage:
+    """
+    Almacenamiento en memoria: registra la subida y devuelve una URL falsa.
+
+    La app corre con STORAGE_MODE=cloudinary, asi que un CheckoutService sin
+    inyectar intentaria subir el comprobante a Cloudinary (red) al confirmar el
+    pago. Este doble mantiene el test offline y permite afirmar que el PDF se sube
+    y que su URL queda registrada en el pedido.
+    """
+
+    def __init__(self) -> None:
+        self.subidos: list[dict] = []
+
+    def guardar(self, contenido: bytes, nombre: str, content_type: str, carpeta: str) -> str:
+        self.subidos.append(
+            {"nombre": nombre, "content_type": content_type, "carpeta": carpeta, "bytes": len(contenido)}
+        )
+        return f"https://fake.cloud/{carpeta}/{nombre}"
+
+
+def _servicio_paypal_fake(db, email_sender=None, storage=None) -> CheckoutService:
+    """CheckoutService con la estrategia, la captura de PayPal y el storage al doble."""
     gw = _FakePaypalGateway()
     return CheckoutService(
         db,
         metodos_pago={"paypal": PaypalMetodoPago(gw)},
         paypal_gateway=gw,
         email_sender=email_sender or _FakeEmailSender(),
+        storage=storage or _FakeStorage(),
     )
 
 
@@ -126,6 +147,28 @@ def test_capturar_pago_envia_comprobante_con_pdf_adjunto(db_session, seed_client
     adjunto = enviado["attachments"][0]
     assert adjunto.filename == f"comprobante_{creado.numero_orden}.pdf"
     assert adjunto.content[:4] == b"%PDF"  # firma de un PDF valido
+
+
+def test_capturar_pago_guarda_url_del_comprobante(db_session, seed_cliente):
+    # Tras confirmar el pago, el PDF se sube al storage y su URL queda en el pedido
+    # (comprobante_pdf_url), de donde la lee "Mis facturas".
+    storage = _FakeStorage()
+    servicio = _servicio_paypal_fake(db_session, storage=storage)
+    creado = servicio.procesar_checkout(_datos(metodo="paypal"))
+
+    servicio.capturar_pago_paypal(f"FAKE_{creado.numero_orden}")
+
+    assert len(storage.subidos) == 1
+    subido = storage.subidos[0]
+    assert subido["nombre"] == f"comprobante_{creado.numero_orden}.pdf"
+    assert subido["content_type"] == "application/pdf"
+    assert subido["carpeta"] == "comprobantes"
+
+    pedido = servicio.repo.obtener_por_codigo(creado.numero_orden)
+    assert (
+        pedido.comprobante_pdf_url
+        == f"https://fake.cloud/comprobantes/comprobante_{creado.numero_orden}.pdf"
+    )
 
 
 def test_capturar_pago_de_pedido_inexistente_lanza_value_error(db_session, seed_cliente):
