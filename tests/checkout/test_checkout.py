@@ -28,13 +28,26 @@ class TestCrearCheckout:
         # La referencia que se da al cliente coincide con el numero de orden emitido.
         assert body["detalles_pago"]["numero_orden_referencia"] == body["numero_orden"]
 
-    def test_paypal_devuelve_url_de_la_pasarela(self, client, seed_cliente, payload):
+    def test_paypal_devuelve_url_de_la_pasarela(self, client, seed_cliente, payload, monkeypatch):
+        # La app corre con PAYPAL_MODE=sandbox (pasarela real); el router construye
+        # el gateway desde la configuracion, asi que no se puede inyectar un doble.
+        # Se sustituye crear_orden por una version en memoria para probar el camino
+        # del router sin pegar a la red.
+        from checkout.paypal_gateway import PaypalGateway
+
+        monkeypatch.setattr(
+            PaypalGateway,
+            "crear_orden",
+            lambda self, numero_orden, total:
+                f"https://www.sandbox.paypal.com/checkoutnow?token=FAKE_{numero_orden}",
+        )
+
         resp = client.post(BASE, json=payload(metodo_pago="paypal"))
 
         assert resp.status_code == 201
         body = resp.json()
         assert body["detalles_pago"]["accion"] == "PAYMENT_GATEWAY_REDIRECT"
-        # La URL mock incorpora el numero de orden real.
+        # El numero de orden real viaja en el token de la URL de aprobacion.
         assert body["numero_orden"] in body["detalles_pago"]["url_pasarela"]
         assert body["mensaje"] == "Sesion de PayPal creada." or "PayPal" in body["mensaje"]
 

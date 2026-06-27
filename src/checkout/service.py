@@ -1,14 +1,19 @@
+import logging
 from decimal import Decimal
 from fastapi import Response
 from sqlalchemy.orm import Session
 
 from checkout.interfaces import IMetodoPago
+from checkout.models import Pedido
 from checkout.payments import build_metodos_pago
 from checkout.paypal_gateway import PaypalGateway
 from checkout.repository import CheckoutRepository
 from checkout.schemas import PedidoCreate, PedidoOut, LineaFactura
 from checkout.factura_pdf import generar_factura_pdf
 from core.config import get_settings
+from core.email import EmailAttachment, IEmailSender, build_email_sender
+
+logger = logging.getLogger(__name__)
 
 class CheckoutService:
     def __init__(
@@ -16,15 +21,20 @@ class CheckoutService:
         db: Session,
         metodos_pago: dict[str, IMetodoPago] | None = None,
         paypal_gateway: PaypalGateway | None = None,
+        email_sender: IEmailSender | None = None,
     ):
         self.repo = CheckoutRepository(db)
-        settings = get_settings()
+        self._settings = get_settings()
         # Mapa nombre -> estrategia de cobro. Se inyecta (tests) o se arma desde la
         # configuracion. El servicio NO conoce las pasarelas concretas: solo delega.
-        self._metodos_pago = metodos_pago or build_metodos_pago(settings)
+        self._metodos_pago = metodos_pago or build_metodos_pago(self._settings)
         # Gateway PayPal para la captura del pago aprobado (segundo paso del flujo,
         # tras la aprobacion del comprador). Se inyecta en tests.
-        self._paypal_gateway = paypal_gateway or PaypalGateway.desde_settings(settings)
+        self._paypal_gateway = paypal_gateway or PaypalGateway.desde_settings(self._settings)
+        # Sender de correo para el comprobante. Se inyecta en tests (doble); en
+        # produccion se construye al vuelo con el remitente del flujo (ver
+        # _enviar_comprobante_por_correo). None => se arma con build_email_sender.
+        self._email_sender = email_sender
 
     def procesar_checkout(self, datos: PedidoCreate) -> PedidoOut:
         if not datos.items:
@@ -62,6 +72,11 @@ class CheckoutService:
 
         self.repo.confirmar_pago(pedido)
 
+        # Comprobante de pago por correo. El pedido ya quedo confirmado: un fallo
+        # de correo no debe revertir el cobro, por eso _enviar_comprobante_por_correo
+        # captura y registra cualquier error sin propagarlo.
+        self._enviar_comprobante_por_correo(pedido)
+
         return PedidoOut(
             numero_orden=pedido.numero_orden,
             estado=pedido.estado,
@@ -75,28 +90,80 @@ class CheckoutService:
         if not pedido:
             raise ValueError("El pedido no existe.")
 
-        lineas_pdf = []
-        for detalle in pedido.detalles:
-            lineas_pdf.append(LineaFactura(
-                producto_nombre=detalle.producto_nombre, 
+        pdf_bytes = self._generar_pdf_pedido(pedido)
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=comprobante_{pedido.numero_orden}.pdf"}
+        )
+
+    def _generar_pdf_pedido(self, pedido: Pedido) -> bytes:
+        """Arma el PDF del comprobante a partir del pedido y sus detalles."""
+        lineas_pdf = [
+            LineaFactura(
+                producto_nombre=detalle.producto_nombre,
                 cantidad=float(detalle.cantidad),
                 precio_unitario=detalle.precio_unitario,
-                subtotal=detalle.subtotal
-            ))
+                subtotal=detalle.subtotal,
+            )
+            for detalle in pedido.detalles
+        ]
 
-        nombre_cliente = pedido.cliente.nombre if pedido.cliente else "Cliente AgroMatina"
-        correo_cliente = "cliente@correo.com" 
+        cliente = pedido.cliente
+        nombre_cliente = cliente.nombre if cliente else "Cliente AgroMatina"
+        correo_cliente = cliente.correo if cliente else "cliente@correo.com"
 
-        pdf_bytes = generar_factura_pdf(
+        return generar_factura_pdf(
             codigo_pedido=pedido.numero_orden,
             cliente_nombre=nombre_cliente,
             cliente_correo=correo_cliente,
             lineas=lineas_pdf,
-            total=pedido.total
+            total=pedido.total,
         )
 
-        return Response(
-            content=pdf_bytes, 
-            media_type="application/pdf", 
-            headers={"Content-Disposition": f"attachment; filename=comprobante_{pedido.numero_orden}.pdf"}
-        )
+    def _enviar_comprobante_por_correo(self, pedido: Pedido) -> None:
+        """
+        Envia el comprobante de pago (PDF adjunto) al cliente tras confirmarse la
+        compra. Un fallo de entrega se registra pero NO se propaga: el pago ya fue
+        capturado y el pedido confirmado, no debe revertirse por el correo.
+        """
+        # Datos de envio QUEMADOS para pruebas con Resend (sandbox: solo entrega al
+        # correo verificado y desde onboarding@resend.dev). Cambiar el if a False
+        # para usar el correo y remitente reales del cliente.
+        if True:
+            destinatario = "arayaagueroa@gmail.com"
+            remitente = "onboarding@resend.dev"
+        else:
+            destinatario = pedido.cliente.correo
+            remitente = self._settings.resend_from
+
+        try:
+            pdf_bytes = self._generar_pdf_pedido(pedido)
+            adjunto = EmailAttachment(
+                filename=f"comprobante_{pedido.numero_orden}.pdf",
+                content=pdf_bytes,
+            )
+            nombre_cliente = pedido.cliente.nombre if pedido.cliente else "cliente"
+            cuerpo = (
+                "<h2>¡Gracias por tu compra en AgroMatina!</h2>"
+                f"<p>Hola {nombre_cliente}, confirmamos el pago de tu pedido "
+                f"<b>{pedido.numero_orden}</b> por un total de <b>CRC {pedido.total:,.2f}</b>.</p>"
+                "<p>Adjunto encontraras el comprobante de tu compra en formato PDF.</p>"
+                "<p><small>La factura electronica fiscal se emite por separado. "
+                "Este es un mensaje automatico; no respondas a este correo.</small></p>"
+            )
+            sender = self._email_sender or build_email_sender(from_override=remitente)
+            sender.send(
+                destinatario,
+                f"Comprobante de tu compra {pedido.numero_orden} — AgroMatina",
+                cuerpo,
+                attachments=[adjunto],
+            )
+        except Exception as exc:
+            logger.error(
+                "Error al enviar el comprobante del pedido %s a %s: %s",
+                pedido.numero_orden,
+                destinatario,
+                exc,
+            )

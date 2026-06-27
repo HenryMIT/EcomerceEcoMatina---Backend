@@ -181,11 +181,15 @@ class ConsoleEmailSender:
         )
 
 
-def build_email_sender() -> IEmailSender:
+def build_email_sender(from_override: str | None = None) -> IEmailSender:
     """
     Estrategia (Strategy Pattern): selecciona el sender segun EMAIL_MODE.
     Unico lugar donde se decide la implementacion concreta de correo.
     En desarrollo usa ConsoleEmailSender; con EMAIL_MODE=smtp usa SMTPEmailSender.
+
+    `from_override`: remitente puntual para este sender (si se omite, se usa el
+    de la configuracion). Permite que un flujo concreto fije su propio "From"
+    sin afectar al resto. ConsoleEmailSender no usa remitente, asi que lo ignora.
     """
     from core.config import get_settings
 
@@ -193,7 +197,7 @@ def build_email_sender() -> IEmailSender:
     if settings.email_mode == "resend":
         return ResendEmailSender(
             api_key=settings.resend_api_key,
-            from_addr=settings.resend_from,
+            from_addr=from_override or settings.resend_from,
         )
     if settings.email_mode == "smtp":
         return SMTPEmailSender(
@@ -201,6 +205,6 @@ def build_email_sender() -> IEmailSender:
             port=settings.smtp_port,
             user=settings.smtp_user,
             password=settings.smtp_password,
-            from_addr=settings.smtp_from,
+            from_addr=from_override or settings.smtp_from,
         )
     return ConsoleEmailSender()

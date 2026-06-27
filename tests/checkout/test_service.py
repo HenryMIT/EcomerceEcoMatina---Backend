@@ -10,6 +10,7 @@ from decimal import Decimal
 import pytest
 
 from checkout.models import EstadoPedido
+from checkout.payments import PaypalMetodoPago
 from checkout.schemas import PedidoCreate
 from checkout.service import CheckoutService
 
@@ -21,6 +22,53 @@ def _datos(metodo: str = "sinpe", items: list | None = None) -> PedidoCreate:
              "precio_unitario": 3500},
         ]
     return PedidoCreate(cliente_id=1, metodo_pago=metodo, items=items)
+
+
+class _FakePaypalGateway:
+    """
+    Gateway de PayPal en memoria: simula crear/capturar la orden sin tocar la red.
+
+    La app corre con PAYPAL_MODE=sandbox (pasarela real), por lo que un
+    CheckoutService sin inyectar pegaria al sandbox en cada test. Estas pruebas
+    se enfocan en la logica del servicio, no en PayPal, asi que inyectan este
+    doble para ser deterministas y offline. El token simulado lleva el prefijo
+    FAKE_<numero_orden>, de forma analoga a como el modo mock usaba MOCK_.
+    """
+
+    def crear_orden(self, numero_orden: str, total) -> str:
+        return f"https://www.sandbox.paypal.com/checkoutnow?token=FAKE_{numero_orden}"
+
+    def capturar_orden(self, paypal_order_id: str) -> str:
+        return paypal_order_id.removeprefix("FAKE_")
+
+
+class _FakeEmailSender:
+    """
+    Sender de correo en memoria: registra los envios sin tocar la red.
+
+    La app corre con EMAIL_MODE=smtp, asi que un CheckoutService sin inyectar
+    intentaria una conexion SMTP real al confirmar el pago. Este doble mantiene
+    el test offline y determinista, y permite afirmar que el comprobante se envia.
+    """
+
+    def __init__(self) -> None:
+        self.enviados: list[dict] = []
+
+    def send(self, to, subject, body_html, attachments=None) -> None:
+        self.enviados.append(
+            {"to": to, "subject": subject, "body": body_html, "attachments": attachments or []}
+        )
+
+
+def _servicio_paypal_fake(db, email_sender=None) -> CheckoutService:
+    """CheckoutService con la estrategia y la captura de PayPal apuntando al doble."""
+    gw = _FakePaypalGateway()
+    return CheckoutService(
+        db,
+        metodos_pago={"paypal": PaypalMetodoPago(gw)},
+        paypal_gateway=gw,
+        email_sender=email_sender or _FakeEmailSender(),
+    )
 
 
 def test_carrito_vacio_lanza_value_error(db_session, seed_cliente):
@@ -47,26 +95,43 @@ def test_sinpe_instruye_redireccion_a_whatsapp(db_session, seed_cliente):
 
 
 def test_paypal_genera_url_de_pasarela_con_la_orden(db_session, seed_cliente):
-    out = CheckoutService(db_session).procesar_checkout(_datos(metodo="paypal"))
+    out = _servicio_paypal_fake(db_session).procesar_checkout(_datos(metodo="paypal"))
     assert out.detalles_pago["accion"] == "PAYMENT_GATEWAY_REDIRECT"
     assert out.numero_orden in out.detalles_pago["url_pasarela"]
 
 
 def test_capturar_pago_paypal_confirma_el_pedido(db_session, seed_cliente):
-    # En modo mock el token de PayPal es MOCK_<numero_orden>; capturar confirma el pedido.
-    servicio = CheckoutService(db_session)
+    # El doble de PayPal devuelve el token FAKE_<numero_orden>; capturar confirma el pedido.
+    servicio = _servicio_paypal_fake(db_session)
     creado = servicio.procesar_checkout(_datos(metodo="paypal"))
     assert creado.estado == EstadoPedido.PENDIENTE_VALIDACION
 
-    confirmado = servicio.capturar_pago_paypal(f"MOCK_{creado.numero_orden}")
+    confirmado = servicio.capturar_pago_paypal(f"FAKE_{creado.numero_orden}")
     assert confirmado.numero_orden == creado.numero_orden
     assert confirmado.estado == EstadoPedido.CONFIRMADO
 
 
+def test_capturar_pago_envia_comprobante_con_pdf_adjunto(db_session, seed_cliente):
+    # Tras confirmar el pago se envia el comprobante de compra con el PDF adjunto.
+    correo = _FakeEmailSender()
+    servicio = _servicio_paypal_fake(db_session, email_sender=correo)
+    creado = servicio.procesar_checkout(_datos(metodo="paypal"))
+
+    servicio.capturar_pago_paypal(f"FAKE_{creado.numero_orden}")
+
+    assert len(correo.enviados) == 1
+    enviado = correo.enviados[0]
+    assert creado.numero_orden in enviado["subject"]
+    assert len(enviado["attachments"]) == 1
+    adjunto = enviado["attachments"][0]
+    assert adjunto.filename == f"comprobante_{creado.numero_orden}.pdf"
+    assert adjunto.content[:4] == b"%PDF"  # firma de un PDF valido
+
+
 def test_capturar_pago_de_pedido_inexistente_lanza_value_error(db_session, seed_cliente):
-    servicio = CheckoutService(db_session)
+    servicio = _servicio_paypal_fake(db_session)
     with pytest.raises(ValueError, match="no existe"):
-        servicio.capturar_pago_paypal("MOCK_AM-NOEXISTE")
+        servicio.capturar_pago_paypal("FAKE_AM-NOEXISTE")
 
 
 def test_metodo_no_soportado_lanza_value_error(db_session, seed_cliente):
