@@ -14,6 +14,10 @@ class PedidoCreate(BaseModel):
     metodo_pago: str = Field(..., pattern="^(sinpe|paypal)$")
     items: List[ItemCheckout]
 
+class CapturaPaypalRequest(BaseModel):
+    # Id de la orden de PayPal (el `token` con que PayPal redirige al return_url).
+    paypal_order_id: str
+
 class PedidoOut(BaseModel):
     numero_orden: str
     estado: EstadoPedido

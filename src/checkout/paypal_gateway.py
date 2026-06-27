@@ -92,6 +92,54 @@ class PaypalGateway:
             logger.error("Error al comunicarse con PayPal: %s", exc)
             raise CheckoutError("No se pudo iniciar el pago con PayPal. Intente de nuevo.") from exc
 
+    def capturar_orden(self, paypal_order_id: str) -> str:
+        """
+        Captura (cobra) una orden ya aprobada por el comprador y devuelve el
+        `numero_orden` de NUESTRO pedido (el reference_id que se fijo al crearla).
+
+        En modo 'mock' el token es 'MOCK_<numero_orden>' (ver crear_orden), asi que
+        se devuelve la referencia sin tocar la red.
+        """
+        if self._mode == "mock":
+            return paypal_order_id.removeprefix("MOCK_")
+
+        base_url = _BASE_URLS.get(self._mode)
+        if base_url is None:
+            raise CheckoutError(f"PAYPAL_MODE desconocido: {self._mode}")
+        if not self._client_id or not self._client_secret:
+            raise CheckoutError("Faltan las credenciales de PayPal en la configuracion.")
+
+        import httpx  # import perezoso: solo se exige con PAYPAL_MODE real
+
+        try:
+            with httpx.Client(base_url=base_url, timeout=_TIMEOUT_SEGUNDOS) as client:
+                token = self._obtener_access_token(client)
+                return self._capturar_orden_api(client, token, paypal_order_id)
+        except CheckoutError:
+            raise
+        except httpx.HTTPError as exc:
+            logger.error("Error al capturar el pago en PayPal: %s", exc)
+            raise CheckoutError("No se pudo confirmar el pago con PayPal. Intente de nuevo.") from exc
+
+    def _capturar_orden_api(self, client, token: str, paypal_order_id: str) -> str:
+        """POST /v2/checkout/orders/{id}/capture y devuelve el reference_id (numero_orden)."""
+        resp = client.post(
+            f"/v2/checkout/orders/{paypal_order_id}/capture",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("status") != "COMPLETED":
+            raise CheckoutError(f"El pago no se completo (estado PayPal: {data.get('status')}).")
+
+        # reference_id se fijo al crear la orden = nuestro numero_orden.
+        unidades = data.get("purchase_units", [])
+        referencia = next((u.get("reference_id") for u in unidades if u.get("reference_id")), None)
+        if not referencia:
+            raise CheckoutError("PayPal no devolvio la referencia del pedido en la captura.")
+        return referencia
+
     def _obtener_access_token(self, client) -> str:
         """OAuth2 client_credentials: intercambia client_id/secret por un access token."""
         resp = client.post(

@@ -31,6 +31,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         DemasiadosArchivosError,
     )
     from chatbot.exceptions import ChatbotError
+    from sqlalchemy.exc import IntegrityError
 
     @app.exception_handler(CredencialesInvalidasError)
     async def _(request: Request, exc: CredencialesInvalidasError):
@@ -83,3 +84,12 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ChatbotError)
     async def _(request: Request, exc: ChatbotError):  # noqa: F811
         return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+    @app.exception_handler(IntegrityError)
+    async def _(request: Request, exc: IntegrityError):  # noqa: F811
+        # Violacion de integridad (p. ej. restriccion de unicidad por una carrera
+        # entre dos registros simultaneos). Respondemos 409 en vez de un 500.
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Los datos ya existen o violan una restriccion de la base de datos."},
+        )

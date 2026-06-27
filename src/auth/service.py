@@ -384,7 +384,7 @@ class AuthService:
         self._enviar_correo_seguro(correo, "Verifica tu cuenta en AgroMatina", cuerpo)
 
     def _enviar_recuperacion(self, correo: str, token: str) -> None:
-        link = f"{self._settings.frontend_url}/recuperar-contrasena?token={token}"
+        link = f"{self._settings.frontend_url}/restablecer-contrasena?token={token}"
         cuerpo = (
             "<h2>Recuperacion de contrasena — AgroMatina</h2>"
             "<p>Recibiste este correo porque solicitaste restablecer tu contrasena.</p>"

@@ -8,6 +8,10 @@ from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
+# Timeout (segundos) de las operaciones SMTP. Sin esto, una conexion bloqueada
+# (p. ej. un proveedor que filtra el puerto 587) cuelga el request indefinidamente.
+_SMTP_TIMEOUT_SEGUNDOS = 15
+
 
 @dataclass(frozen=True)
 class EmailAttachment:
@@ -83,13 +87,72 @@ class SMTPEmailSender:
     ) -> None:
         msg = _construir_mensaje(self._from, to, subject, body_html, attachments)
 
-        with smtplib.SMTP(self._host, self._port) as server:
+        with smtplib.SMTP(self._host, self._port, timeout=_SMTP_TIMEOUT_SEGUNDOS) as server:
             server.ehlo()
             server.starttls()
             server.login(self._user, self._password)
             server.sendmail(self._from, to, msg.as_string())
 
         logger.info("Correo enviado a %s — asunto: %s", to, subject)
+
+
+class ResendEmailSender:
+    """
+    Envia correos via la API HTTP de Resend (https://resend.com).
+
+    Usa HTTPS (puerto 443), por lo que funciona en plataformas que bloquean el
+    SMTP saliente (Render, etc.). Mismo contrato IEmailSender: es intercambiable
+    con SMTPEmailSender sin tocar el resto del codigo (Strategy / LSP).
+    """
+
+    _API_URL = "https://api.resend.com/emails"
+    _TIMEOUT_SEGUNDOS = 15
+
+    def __init__(self, api_key: str, from_addr: str) -> None:
+        self._api_key = api_key
+        self._from = from_addr
+
+    def send(
+        self,
+        to: str,
+        subject: str,
+        body_html: str,
+        attachments: list[EmailAttachment] | None = None,
+    ) -> None:
+        if not self._api_key:
+            raise RuntimeError("RESEND_API_KEY no esta configurada.")
+
+        import base64
+
+        import httpx  # import perezoso: solo se exige con EMAIL_MODE=resend
+
+        payload: dict = {
+            "from": self._from,
+            "to": [to],
+            "subject": subject,
+            "html": body_html,
+        }
+        if attachments:
+            payload["attachments"] = [
+                {
+                    "filename": adjunto.filename,
+                    "content": base64.b64encode(adjunto.content).decode("ascii"),
+                }
+                for adjunto in attachments
+            ]
+
+        respuesta = httpx.post(
+            self._API_URL,
+            headers={"Authorization": f"Bearer {self._api_key}"},
+            json=payload,
+            timeout=self._TIMEOUT_SEGUNDOS,
+        )
+        # Resend devuelve detalle del error en el cuerpo (p. ej. dominio no
+        # verificado); lo incluimos para que quede en el log de _enviar_correo_seguro.
+        if respuesta.status_code >= 400:
+            raise RuntimeError(f"Resend respondio {respuesta.status_code}: {respuesta.text}")
+
+        logger.info("Correo enviado a %s via Resend — asunto: %s", to, subject)
 
 
 class ConsoleEmailSender:
@@ -127,6 +190,11 @@ def build_email_sender() -> IEmailSender:
     from core.config import get_settings
 
     settings = get_settings()
+    if settings.email_mode == "resend":
+        return ResendEmailSender(
+            api_key=settings.resend_api_key,
+            from_addr=settings.resend_from,
+        )
     if settings.email_mode == "smtp":
         return SMTPEmailSender(
             host=settings.smtp_host,

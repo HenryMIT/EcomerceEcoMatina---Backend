@@ -4,17 +4,27 @@ from sqlalchemy.orm import Session
 
 from checkout.interfaces import IMetodoPago
 from checkout.payments import build_metodos_pago
+from checkout.paypal_gateway import PaypalGateway
 from checkout.repository import CheckoutRepository
 from checkout.schemas import PedidoCreate, PedidoOut, LineaFactura
 from checkout.factura_pdf import generar_factura_pdf
 from core.config import get_settings
 
 class CheckoutService:
-    def __init__(self, db: Session, metodos_pago: dict[str, IMetodoPago] | None = None):
+    def __init__(
+        self,
+        db: Session,
+        metodos_pago: dict[str, IMetodoPago] | None = None,
+        paypal_gateway: PaypalGateway | None = None,
+    ):
         self.repo = CheckoutRepository(db)
+        settings = get_settings()
         # Mapa nombre -> estrategia de cobro. Se inyecta (tests) o se arma desde la
         # configuracion. El servicio NO conoce las pasarelas concretas: solo delega.
-        self._metodos_pago = metodos_pago or build_metodos_pago(get_settings())
+        self._metodos_pago = metodos_pago or build_metodos_pago(settings)
+        # Gateway PayPal para la captura del pago aprobado (segundo paso del flujo,
+        # tras la aprobacion del comprador). Se inyecta en tests.
+        self._paypal_gateway = paypal_gateway or PaypalGateway.desde_settings(settings)
 
     def procesar_checkout(self, datos: PedidoCreate) -> PedidoOut:
         if not datos.items:
@@ -36,6 +46,28 @@ class CheckoutService:
             total=pedido_guardado.total,
             mensaje=resultado.mensaje,
             detalles_pago=resultado.detalles
+        )
+
+    def capturar_pago_paypal(self, paypal_order_id: str) -> PedidoOut:
+        """
+        Segundo paso del pago PayPal: captura (cobra) la orden ya aprobada por el
+        comprador y confirma el pedido. `paypal_order_id` es el token con que PayPal
+        redirige al return_url. Devuelve el pedido confirmado.
+        """
+        numero_orden = self._paypal_gateway.capturar_orden(paypal_order_id)
+
+        pedido = self.repo.obtener_por_codigo(numero_orden)
+        if not pedido:
+            raise ValueError("El pedido asociado al pago no existe.")
+
+        self.repo.confirmar_pago(pedido)
+
+        return PedidoOut(
+            numero_orden=pedido.numero_orden,
+            estado=pedido.estado,
+            total=pedido.total,
+            mensaje="Pago confirmado. ¡Gracias por tu compra!",
+            detalles_pago={},
         )
 
     def descargar_pdf_comprobante(self, numero_orden: str) -> Response:
