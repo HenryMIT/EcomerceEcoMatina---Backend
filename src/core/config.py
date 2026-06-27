@@ -24,13 +24,20 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
 
     # Correo electrónico
-    # email_mode: "console" imprime en logs (desarrollo); "smtp" envía real
+    # email_mode: "console" imprime en logs (desarrollo); "smtp" envía via SMTP;
+    #             "resend" envía via la API HTTP de Resend (recomendado en PaaS
+    #             como Render, que bloquean los puertos SMTP salientes).
     email_mode: str = "console"
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = "noreply@agromatina.com"
+    # Resend (API HTTP por HTTPS:443, no usa puertos SMTP). Activar con EMAIL_MODE=resend.
+    resend_api_key: str = ""
+    # Remitente: en pruebas sirve 'onboarding@resend.dev'; en produccion usar un
+    # correo de un dominio VERIFICADO en Resend (si no, Resend rechaza el envio).
+    resend_from: str = "onboarding@resend.dev"
 
     # Tokens transitorios (tablas tokens_verificacion)
     verification_token_hours: int = 24
